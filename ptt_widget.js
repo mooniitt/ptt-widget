@@ -69,7 +69,11 @@ async function fetchData() {
     const res = await req.loadJSON();
     if (res && res.status === 'success' && res.data) {
       fm.writeString(cachePath, JSON.stringify(res.data));
-      return parseTraffic(res.data);
+      const parsed = parseTraffic(res.data);
+      if (parsed) {
+        parsed.isFromCache = false;
+      }
+      return parsed;
     }
   } catch (e) {
     console.log('网络请求失败，尝试读取本地缓存数据: ' + e);
@@ -81,7 +85,11 @@ async function fetchData() {
       const cacheStr = fm.readString(cachePath);
       const cachedData = JSON.parse(cacheStr);
       if (cachedData) {
-        return parseTraffic(cachedData);
+        const parsed = parseTraffic(cachedData);
+        if (parsed) {
+          parsed.isFromCache = true;
+        }
+        return parsed;
       }
     }
   } catch (e) {
@@ -132,8 +140,37 @@ function parseTraffic(info) {
     usedPercent,
     remainingPercent,
     resetDaysLeft,
-    expireDateStr
+    expireDateStr,
+    isFromCache: false,
+    updateTime: formatCurrentTime()
   };
+}
+
+// 格式化当前时间 (HH:mm)
+function formatCurrentTime() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+// 渲染右下角刷新状态与时间
+function renderStatusBadge(stack, data, isSmall = false) {
+  const statusStack = stack.addStack();
+  statusStack.layoutHorizontally();
+  statusStack.centerAlignContent();
+  statusStack.spacing = 3;
+
+  try {
+    const symbol = SFSymbol.named('arrow.triangle.2.circlepath');
+    const symbolImg = statusStack.addImage(symbol.image);
+    symbolImg.imageSize = new Size(isSmall ? 8 : 9, isSmall ? 8 : 9);
+    symbolImg.tintColor = data.isFromCache ? new Color('#FF9500') : new Color('#8E8E93');
+  } catch (e) {}
+
+  const timeText = statusStack.addText(data.updateTime || formatCurrentTime());
+  timeText.font = Font.systemFont(isSmall ? 9 : 10);
+  timeText.textColor = data.isFromCache ? new Color('#FF9500') : new Color('#8E8E93');
 }
 
 // 绘制高度自定义的进度条
@@ -250,6 +287,10 @@ function renderMediumWidget(widget, data) {
   const expireText = footerStack.addText(`到期时间: ${data.expireDateStr}`);
   expireText.font = Font.systemFont(10);
   expireText.textColor = new Color('#8E8E93');
+
+  footerStack.addSpacer();
+
+  renderStatusBadge(footerStack, data, false);
 }
 
 // 小号小组件
@@ -298,9 +339,17 @@ function renderSmallWidget(widget, data) {
 
   widget.addSpacer(2);
 
-  const expireText = widget.addText(`到期: ${data.expireDateStr}`);
+  const footerStack = widget.addStack();
+  footerStack.layoutHorizontally();
+  footerStack.centerAlignContent();
+
+  const expireText = footerStack.addText(`到期: ${data.expireDateStr}`);
   expireText.font = Font.systemFont(9);
   expireText.textColor = new Color('#8E8E93');
+
+  footerStack.addSpacer();
+
+  renderStatusBadge(footerStack, data, true);
 }
 
 // 错误提示组件
