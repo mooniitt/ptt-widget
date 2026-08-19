@@ -5,6 +5,8 @@
 
 // ================= 配置区域 =================
 const CONFIG = {
+  // 脚本版本号
+  version: 'v1.0.0',
   // 订阅 API 地址
   api_url: 'https://ptt.ixlmo.com/api/v1/user/getSubscribe',
   // 从 Loader 注入的全局变量或小组件参数中读取 Token（不在远程写死）
@@ -154,12 +156,19 @@ function formatCurrentTime() {
   return `${h}:${m}`;
 }
 
-// 渲染右下角刷新状态与时间
+// 渲染右下角版本号与刷新状态/时间
 function renderStatusBadge(stack, data, isSmall = false) {
   const statusStack = stack.addStack();
   statusStack.layoutHorizontally();
   statusStack.centerAlignContent();
   statusStack.spacing = 3;
+
+  if (CONFIG.version) {
+    const verText = statusStack.addText(CONFIG.version);
+    verText.font = Font.systemFont(isSmall ? 8 : 9);
+    verText.textColor = new Color('#8E8E93');
+    statusStack.addSpacer(1);
+  }
 
   try {
     const symbol = SFSymbol.named('arrow.triangle.2.circlepath');
@@ -371,6 +380,15 @@ function renderErrorWidget(widget, message = '服务不可用') {
   descText.textColor = new Color('#8E8E93');
   descText.centerAlignText();
   widget.addSpacer();
+
+  if (CONFIG.version) {
+    const footerStack = widget.addStack();
+    footerStack.layoutHorizontally();
+    footerStack.addSpacer();
+    const verText = footerStack.addText(CONFIG.version);
+    verText.font = Font.systemFont(9);
+    verText.textColor = new Color('#8E8E93', 0.6);
+  }
 }
 
 // 执行渲染
