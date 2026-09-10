@@ -28,7 +28,7 @@ async function main() {
 
   if (!isAccessory) {
     widget.backgroundColor = new Color('#FFFFFF');
-    widget.setPadding(14, 16, 14, 16);
+    widget.setPadding(12, 15, 12, 15);
   }
 
   try {
@@ -624,41 +624,37 @@ function renderMediumWidget(widget, data) {
   const resetStack = headerStack.addStack();
   resetStack.backgroundColor = new Color('#F2F4F7');
   resetStack.cornerRadius = 6;
-  resetStack.setPadding(3, 7, 3, 7);
+  resetStack.setPadding(2, 7, 2, 7);
 
   const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
-  resetText.font = Font.systemFont(11);
+  resetText.font = Font.systemFont(10);
   resetText.textColor = new Color('#007AFF');
 
-  widget.addSpacer(8);
+  widget.addSpacer(6);
 
   // 2. 关键指标快速概览行
   const metaStack = widget.addStack();
   metaStack.layoutHorizontally();
   metaStack.centerAlignContent();
 
-  // 剩余流量大字
-  const remLabel = metaStack.addText('剩余 ');
-  remLabel.font = Font.systemFont(11);
-  remLabel.textColor = new Color('#8E8E93');
-
-  const remVal = metaStack.addText(`${data.remainingGB} GB`);
-  remVal.font = Font.boldSystemFont(15);
-  remVal.textColor = new Color('#10B981');
-
-  metaStack.addSpacer();
-
-  // 当月累计总用量进度比
+  // 左侧：已用进度
   const usedRatioText = metaStack.addText(`已用 ${data.usedPercent}%`);
   usedRatioText.font = Font.mediumSystemFont(11);
   usedRatioText.textColor = new Color('#1C1C1E');
 
-  widget.addSpacer(8);
+  metaStack.addSpacer();
+
+  // 右侧：剩余流量大字（去掉"剩余"标签，直接显示数值）
+  const remVal = metaStack.addText(`${data.remainingGB} GB`);
+  remVal.font = Font.boldSystemFont(15);
+  remVal.textColor = new Color('#10B981');
+
+  widget.addSpacer(6);
 
   // 3. 核心图表区域 (1:1 点对点高清晰度渲染，100% 自适应满宽)
   const chartW = getWidgetChartWidth('medium');
   if (data.dailyStats && data.dailyStats.days && data.dailyStats.days.length > 0) {
-    const chartH = 76;
+    const chartH = 78;
     const chartImg = drawDailyTrafficChart(data.dailyStats, chartW, chartH, CONFIG.chart_type);
     const chartWidgetImg = widget.addImage(chartImg);
     chartWidgetImg.imageSize = new Size(chartW, chartH);
@@ -671,7 +667,7 @@ function renderMediumWidget(widget, data) {
     progressWidgetImg.resizable = true;
   }
 
-  widget.addSpacer(8);
+  widget.addSpacer(6);
 
   // 4. 底部栏：到期时间与刷新状态
   const footerStack = widget.addStack();
@@ -711,14 +707,14 @@ function renderLargeWidget(widget, data) {
   resetText.font = Font.systemFont(11);
   resetText.textColor = new Color('#007AFF');
 
-  widget.addSpacer(10);
+  widget.addSpacer(9);
 
   // 2. 核心资产与进度卡片 (Hero Card)
   const heroCard = widget.addStack();
   heroCard.layoutVertically();
   heroCard.backgroundColor = new Color('#F8F9FA');
   heroCard.cornerRadius = 10;
-  heroCard.setPadding(10, 14, 10, 14);
+  heroCard.setPadding(10, 13, 10, 13);
 
   const heroTop = heroCard.addStack();
   heroTop.layoutHorizontally();
@@ -764,16 +760,16 @@ function renderLargeWidget(widget, data) {
   usedText.font = Font.systemFont(11);
   usedText.textColor = new Color('#8E8E93');
 
-  heroCard.addSpacer(8);
+  heroCard.addSpacer(7);
 
   // 进度条 (与卡片内容区等宽对齐)
-  const heroContentW = chartW - 28;
-  const progressImg = drawProgressBar(data.usedPercent, heroContentW, 8);
+  const heroContentW = chartW - 26;
+  const progressImg = drawProgressBar(data.usedPercent, heroContentW, 7);
   const progressWidgetImg = heroCard.addImage(progressImg);
-  progressWidgetImg.imageSize = new Size(heroContentW, 8);
+  progressWidgetImg.imageSize = new Size(heroContentW, 7);
   progressWidgetImg.resizable = true;
 
-  widget.addSpacer(10);
+  widget.addSpacer(9);
 
   // 3. 四宫格核心数据指标胶囊 (KPI 4-Grid)
   const daily = data.dailyStats;
@@ -794,7 +790,7 @@ function renderLargeWidget(widget, data) {
       col.layoutVertically();
       col.backgroundColor = new Color('#F8F9FA');
       col.cornerRadius = 8;
-      col.setPadding(6, 8, 6, 8);
+      col.setPadding(6, 7, 6, 7);
 
       const lbl = col.addText(items[i].label);
       lbl.font = Font.systemFont(9);
@@ -813,7 +809,7 @@ function renderLargeWidget(widget, data) {
       }
     }
 
-    widget.addSpacer(10);
+    widget.addSpacer(9);
   }
 
   // 4. 当月每日用量全景大图表 (Full Chart Section)
@@ -833,7 +829,7 @@ function renderLargeWidget(widget, data) {
 
   widget.addSpacer(4);
 
-  // 1:1 大尺寸高清图表 (100% 满宽自适应) - 大卡片加高图表提升可读性
+  // 1:1 大尺寸高清图表 (100% 满宽自适应)
   const chartH = 120;
   if (daily && daily.days && daily.days.length > 0) {
     const chartImg = drawDailyTrafficChart(daily, chartW, chartH, CONFIG.chart_type);
@@ -848,7 +844,7 @@ function renderLargeWidget(widget, data) {
     progressWidgetImg.resizable = true;
   }
 
-  widget.addSpacer(8);
+  widget.addSpacer(7);
 
   // 5. 底部状态栏
   const footerStack = widget.addStack();
@@ -1067,7 +1063,7 @@ function renderSmallWidget(widget, data) {
   titleText.textColor = new Color('#1C1C1E');
   titleText.lineLimit = 1;
 
-  widget.addSpacer(6);
+  widget.addSpacer(5);
 
   const remLabel = widget.addText('剩余流量');
   remLabel.font = Font.systemFont(10);
@@ -1092,14 +1088,14 @@ function renderSmallWidget(widget, data) {
   unitText.textColor = new Color('#10B981');
   unitStack.addSpacer(3);
 
-  widget.addSpacer(6);
+  widget.addSpacer(5);
 
   // 进度条
-  const progressImg = drawProgressBar(data.usedPercent, 200, 8);
+  const progressImg = drawProgressBar(data.usedPercent, 200, 7);
   const progressWidgetImg = widget.addImage(progressImg);
   progressWidgetImg.resizable = true;
 
-  widget.addSpacer(6);
+  widget.addSpacer(5);
 
   // 紧凑每日用量信息
   const daily = data.dailyStats;
@@ -1113,7 +1109,7 @@ function renderSmallWidget(widget, data) {
     subText.textColor = new Color('#8E8E93');
   }
 
-  widget.addSpacer(2);
+  widget.addSpacer();
 
   const footerStack = widget.addStack();
   footerStack.layoutHorizontally();
