@@ -598,7 +598,7 @@ function renderMediumWidget(widget, data) {
   // 今日已用与当月日均
   const daily = data.dailyStats;
   if (daily) {
-    const todayText = metaStack.addText(`今日 ${daily.todayGB}G · 日均 ${daily.avgGB}G`);
+    const todayText = metaStack.addText(`今日 ${daily.todayGB}G`);
     todayText.font = Font.systemFont(11);
     todayText.textColor = new Color('#8E8E93');
   }
