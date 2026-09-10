@@ -1,15 +1,20 @@
 /**
  * iOS 流量订阅桌面小组件 (远程核心逻辑)
- * 适配尺寸：Small (小卡片) / Medium (中卡片)
+ * 适配尺寸：Small (小卡片) / Medium (中卡片) / Large (大卡片)
+ * 功能特性：当月每日使用额度可视化图表 (柱状图/折线图)、剩余流量监控、重置提醒
  */
 
 // ================= 配置区域 =================
 const CONFIG = {
   // 脚本版本号
-  version: 'v1.0.0',
+  version: 'v1.1.0',
   // 订阅 API 地址
   api_url: 'https://ptt.ixlmo.com/api/v1/user/getSubscribe',
-  // 从 Loader 注入的全局变量或小组件参数中读取 Token（不在远程写死）
+  // 每日流量统计 API 地址
+  stat_api_url: 'https://ptt.ixlmo.com/api/v1/user/stat/getTrafficLog',
+  // 默认图表显示类型: 'bar' (柱状图) 或 'line' (折线面积图)
+  chart_type: 'bar',
+  // 从 Loader 注入的全局变量或小组件参数中读取 Token
   token: globalThis.__LOCAL_TRAFFIC_TOKEN__ || (args.widgetParameter && args.widgetParameter.trim()) || '',
   // 刷新间隔（秒）
   cache_time: 600
@@ -32,6 +37,8 @@ async function main() {
         renderErrorWidget(widget, '服务不可用');
       } else if (widgetSize === 'small') {
         renderSmallWidget(widget, data);
+      } else if (widgetSize === 'large') {
+        renderLargeWidget(widget, data);
       } else {
         renderMediumWidget(widget, data);
       }
@@ -46,6 +53,8 @@ async function main() {
   } else {
     if (widgetSize === 'small') {
       await widget.presentSmall();
+    } else if (widgetSize === 'large') {
+      await widget.presentLarge();
     } else {
       await widget.presentMedium();
     }
@@ -57,41 +66,66 @@ async function main() {
 async function fetchData() {
   const fm = FileManager.local();
   const cachePath = fm.joinPath(fm.documentsDirectory(), 'traffic_widget_cache.json');
-  
+  const headers = {
+    'accept': 'application/json, text/plain, */*',
+    'authorization': `Bearer ${CONFIG.token}`,
+    'referer': 'https://ptt.ixlmo.com/',
+    'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X)'
+  };
+
+  let subData = null;
+  let logData = null;
+
+  // 1. 并发请求订阅信息与每日流量明细
   try {
-    const req = new Request(`${CONFIG.api_url}?t=${Date.now()}`);
-    req.timeoutInterval = 10;
-    req.headers = {
-      'accept': 'application/json, text/plain, */*',
-      'authorization': `Bearer ${CONFIG.token}`,
-      'referer': 'https://ptt.ixlmo.com/',
-      'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X)'
-    };
-    
-    const res = await req.loadJSON();
-    if (res && res.status === 'success' && res.data) {
-      fm.writeString(cachePath, JSON.stringify(res.data));
-      const parsed = parseTraffic(res.data);
-      if (parsed) {
-        parsed.isFromCache = false;
-      }
+    const subReq = new Request(`${CONFIG.api_url}?t=${Date.now()}`);
+    subReq.timeoutInterval = 8;
+    subReq.headers = headers;
+
+    const logReq = new Request(`${CONFIG.stat_api_url}?t=${Date.now()}`);
+    logReq.timeoutInterval = 8;
+    logReq.headers = headers;
+
+    const [subRes, logRes] = await Promise.allSettled([
+      subReq.loadJSON(),
+      logReq.loadJSON()
+    ]);
+
+    if (subRes.status === 'fulfilled' && subRes.value && subRes.value.status === 'success') {
+      subData = subRes.value.data;
+    }
+    if (logRes.status === 'fulfilled' && logRes.value && logRes.value.status === 'success') {
+      logData = logRes.value.data;
+    }
+
+    if (subData) {
+      const cacheObj = {
+        subData,
+        logData: logData || null,
+        cachedAt: Date.now()
+      };
+      fm.writeString(cachePath, JSON.stringify(cacheObj));
+      const parsed = parseTrafficData(subData, logData);
+      if (parsed) parsed.isFromCache = false;
       return parsed;
     }
   } catch (e) {
     console.log('网络请求失败，尝试读取本地缓存数据: ' + e);
   }
 
-  // 读取缓存
+  // 2. 读取本地缓存并容错兼容
   try {
     if (fm.fileExists(cachePath)) {
       const cacheStr = fm.readString(cachePath);
-      const cachedData = JSON.parse(cacheStr);
-      if (cachedData) {
-        const parsed = parseTraffic(cachedData);
+      const cached = JSON.parse(cacheStr);
+      if (cached) {
+        const sData = cached.subData || cached;
+        const lData = cached.logData || null;
+        const parsed = parseTrafficData(sData, lData);
         if (parsed) {
           parsed.isFromCache = true;
+          return parsed;
         }
-        return parsed;
       }
     }
   } catch (e) {
@@ -101,14 +135,14 @@ async function fetchData() {
   return null;
 }
 
-// 解析与单位换算 (Byte -> GB)
-function parseTraffic(info) {
-  if (!info || typeof info !== 'object') return null;
+// ================= 数据解析与指标计算 =================
+function parseTrafficData(subInfo, logList) {
+  if (!subInfo || typeof subInfo !== 'object') return null;
 
-  const u = Number(info.u) || 0;
-  const d = Number(info.d) || 0;
+  const u = Number(subInfo.u) || 0;
+  const d = Number(subInfo.d) || 0;
   const totalUsed = u + d;
-  const totalEnable = Number(info.transfer_enable) || 1;
+  const totalEnable = Number(subInfo.transfer_enable) || 1;
   const remaining = Math.max(0, totalEnable - totalUsed);
 
   const GB = 1024 * 1024 * 1024;
@@ -119,23 +153,26 @@ function parseTraffic(info) {
   const remainingPercent = 100 - usedPercent;
 
   let resetDaysLeft = 0;
-  if (info.next_reset_at) {
+  if (subInfo.next_reset_at) {
     const now = Math.floor(Date.now() / 1000);
-    resetDaysLeft = Math.max(0, Math.ceil((info.next_reset_at - now) / 86400));
+    resetDaysLeft = Math.max(0, Math.ceil((subInfo.next_reset_at - now) / 86400));
   }
 
   let expireDateStr = '长期有效';
-  if (info.expired_at) {
-    const expireDate = new Date(info.expired_at * 1000);
+  if (subInfo.expired_at) {
+    const expireDate = new Date(subInfo.expired_at * 1000);
     const y = expireDate.getFullYear();
     const m = String(expireDate.getMonth() + 1).padStart(2, '0');
-    const d = String(expireDate.getDate()).padStart(2, '0');
-    expireDateStr = `${y}-${m}-${d}`;
+    const day = String(expireDate.getDate()).padStart(2, '0');
+    expireDateStr = `${y}-${m}-${day}`;
   }
 
+  // 解析当月每日用量统计
+  const dailyStats = parseDailyStats(logList);
+
   return {
-    planName: (info.plan && info.plan.name) ? info.plan.name.replace(/^[^\w\u4e00-\u9fa5]+/, '').trim() : '流量套餐',
-    email: info.email || '',
+    planName: (subInfo.plan && subInfo.plan.name) ? subInfo.plan.name.replace(/^[^\w\u4e00-\u9fa5]+/, '').trim() : '流量套餐',
+    email: subInfo.email || '',
     usedGB,
     totalGB,
     remainingGB,
@@ -143,8 +180,74 @@ function parseTraffic(info) {
     remainingPercent,
     resetDaysLeft,
     expireDateStr,
+    dailyStats,
     isFromCache: false,
     updateTime: formatCurrentTime()
+  };
+}
+
+// 解析当月从 1 号到今日的每日使用额度
+function parseDailyStats(logList) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth(); // 0-11
+  const todayDate = now.getDate();
+  const GB = 1024 * 1024 * 1024;
+
+  const dayMap = {};
+  if (Array.isArray(logList)) {
+    for (const item of logList) {
+      if (!item || !item.record_at) continue;
+      const d = new Date(item.record_at * 1000);
+      if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+        const day = d.getDate();
+        const bytes = (Number(item.u) || 0) + (Number(item.d) || 0);
+        dayMap[day] = (dayMap[day] || 0) + bytes;
+      }
+    }
+  }
+
+  const days = [];
+  let monthTotalBytes = 0;
+  let maxBytes = 0;
+  let maxDay = todayDate;
+  let todayBytes = 0;
+
+  for (let d = 1; d <= todayDate; d++) {
+    const bytes = dayMap[d] || 0;
+    const gb = bytes / GB;
+    monthTotalBytes += bytes;
+    if (bytes > maxBytes) {
+      maxBytes = bytes;
+      maxDay = d;
+    }
+    if (d === todayDate) {
+      todayBytes = bytes;
+    }
+    days.push({
+      day: d,
+      dateLabel: `${d}`,
+      bytes,
+      gb: Number(gb.toFixed(2)),
+      isToday: d === todayDate
+    });
+  }
+
+  const avgBytes = todayDate > 0 ? (monthTotalBytes / todayDate) : 0;
+  const avgGB = Number((avgBytes / GB).toFixed(2));
+  const maxGB = Number((maxBytes / GB).toFixed(2));
+  const todayGB = Number((todayBytes / GB).toFixed(2));
+  const monthTotalGB = Number((monthTotalBytes / GB).toFixed(2));
+
+  return {
+    days,
+    currentMonth: currentMonth + 1,
+    todayDate,
+    monthTotalGB,
+    avgGB,
+    maxGB,
+    maxDay,
+    todayGB
   };
 }
 
@@ -154,6 +257,247 @@ function formatCurrentTime() {
   const h = String(now.getHours()).padStart(2, '0');
   const m = String(now.getMinutes()).padStart(2, '0');
   return `${h}:${m}`;
+}
+
+// ================= 图表与图形渲染引擎 =================
+
+// 绘制高度自定义的进度条
+function drawProgressBar(percent, width = 600, height = 14) {
+  const dc = new DrawContext();
+  dc.size = new Size(width, height);
+  dc.opaque = false;
+  dc.respectScreenScale = true;
+
+  const bgPath = new Path();
+  bgPath.addRoundedRect(new Rect(0, 0, width, height), height / 2, height / 2);
+  dc.addPath(bgPath);
+  dc.setFillColor(new Color('#E5E5EA'));
+  dc.fillPath();
+
+  if (percent > 0) {
+    const fillWidth = Math.max(height, Math.min(width, (width * percent) / 100));
+    const fillPath = new Path();
+    fillPath.addRoundedRect(new Rect(0, 0, fillWidth, height), height / 2, height / 2);
+    dc.addPath(fillPath);
+
+    let color = '#007AFF';
+    if (percent > 80) color = '#FF3B30';
+    else if (percent > 60) color = '#FF9500';
+
+    dc.setFillColor(new Color(color));
+    dc.fillPath();
+  }
+
+  return dc.getImage();
+}
+
+// 统一图表绘制入口 (支持柱状图与折线图)
+function drawDailyTrafficChart(dailyStats, width = 640, height = 140, type = CONFIG.chart_type) {
+  if (type === 'line') {
+    return drawDailyLineChart(dailyStats, width, height);
+  }
+  return drawDailyBarChart(dailyStats, width, height);
+}
+
+// 绘制每日用量柱状图 (Bar Chart)
+function drawDailyBarChart(dailyStats, width = 640, height = 140) {
+  const dc = new DrawContext();
+  dc.size = new Size(width, height);
+  dc.opaque = false;
+  dc.respectScreenScale = true;
+
+  const days = (dailyStats && dailyStats.days) ? dailyStats.days : [];
+  const n = days.length;
+  if (n === 0) return dc.getImage();
+
+  const labelHeight = 24;
+  const topPadding = 16;
+  const chartHeight = height - labelHeight - topPadding;
+  const chartBottom = height - labelHeight;
+
+  // 标尺上限 (至少为 1GB，防止除以 0)
+  const maxVal = Math.max(dailyStats.maxGB, 1.0);
+
+  // 计算每根柱子的宽度与间隙
+  const sidePadding = 12;
+  const availWidth = width - sidePadding * 2;
+  const maxBarWidth = 26;
+  let gap = Math.max(4, Math.floor(availWidth / (n * 3.2)));
+  let barWidth = Math.max(6, Math.min(maxBarWidth, Math.floor((availWidth - (n - 1) * gap) / n)));
+  const totalBarsWidth = n * barWidth + (n - 1) * gap;
+  const startX = sidePadding + Math.floor((availWidth - totalBarsWidth) / 2);
+
+  // 1. 绘制日均参考参考虚线/浅色辅助线
+  if (dailyStats.avgGB > 0) {
+    const avgY = chartBottom - Math.round((dailyStats.avgGB / maxVal) * (chartHeight - 8));
+    const guidePath = new Path();
+    guidePath.move(new Point(sidePadding, avgY));
+    guidePath.addLine(new Point(width - sidePadding, avgY));
+    dc.addPath(guidePath);
+    dc.setStrokeColor(new Color('#8E8E93', 0.28));
+    dc.setLineWidth(1.5);
+    dc.strokePath();
+
+    // 绘制日均标签文字 (靠右侧微标)
+    dc.setFont(Font.systemFont(14));
+    dc.setTextColor(new Color('#8E8E93', 0.8));
+    dc.setTextAlignedRight();
+    dc.drawTextInRect(`均 ${dailyStats.avgGB}G`, new Rect(width - sidePadding - 90, Math.max(0, avgY - 18), 90, 18));
+  }
+
+  // 2. 循环绘制每日柱子与日期
+  for (let i = 0; i < n; i++) {
+    const item = days[i];
+    const x = startX + i * (barWidth + gap);
+    const barH = item.gb > 0 ? Math.max(4, Math.round((item.gb / maxVal) * (chartHeight - 8))) : 3;
+    const y = chartBottom - barH;
+
+    // 绘制柱子本体 (圆角矩形)
+    const barPath = new Path();
+    const cornerRadius = Math.min(4, Math.floor(barWidth / 2));
+    barPath.addRoundedRect(new Rect(x, y, barWidth, barH), cornerRadius, cornerRadius);
+    dc.addPath(barPath);
+
+    if (item.isToday) {
+      // 今日高亮主色 (iOS 经典蓝)
+      dc.setFillColor(new Color('#007AFF'));
+    } else if (item.gb === 0) {
+      // 无用量浅灰底
+      dc.setFillColor(new Color('#E5E5EA'));
+    } else {
+      // 过去日期柔和灰蓝
+      dc.setFillColor(new Color('#82B1FF'));
+    }
+    dc.fillPath();
+
+    // 3. 绘制 X 轴底部日期刻度
+    // 策略：总天数少时显示关键天，总天数多时显示 1号、5号、10号、15号...以及今天
+    let showLabel = false;
+    if (n <= 8) {
+      showLabel = true;
+    } else if (item.isToday || item.day === 1 || item.day % 5 === 0) {
+      showLabel = true;
+    }
+
+    if (showLabel) {
+      dc.setFont(item.isToday ? Font.boldSystemFont(15) : Font.systemFont(14));
+      dc.setTextColor(item.isToday ? new Color('#007AFF') : new Color('#8E8E93'));
+      dc.setTextAlignedCenter();
+      const labelW = Math.max(barWidth + 16, 26);
+      dc.drawTextInRect(`${item.day}`, new Rect(x - (labelW - barWidth) / 2, chartBottom + 4, labelW, 20));
+    }
+  }
+
+  return dc.getImage();
+}
+
+// 绘制每日用量折线/面积图 (Line Chart)
+function drawDailyLineChart(dailyStats, width = 640, height = 140) {
+  const dc = new DrawContext();
+  dc.size = new Size(width, height);
+  dc.opaque = false;
+  dc.respectScreenScale = true;
+
+  const days = (dailyStats && dailyStats.days) ? dailyStats.days : [];
+  const n = days.length;
+  if (n === 0) return dc.getImage();
+
+  const labelHeight = 24;
+  const topPadding = 18;
+  const chartHeight = height - labelHeight - topPadding;
+  const chartBottom = height - labelHeight;
+  const sidePadding = 24;
+  const availWidth = width - sidePadding * 2;
+  const maxVal = Math.max(dailyStats.maxGB, 1.0);
+
+  // 1. 均值参考线
+  if (dailyStats.avgGB > 0) {
+    const avgY = chartBottom - Math.round((dailyStats.avgGB / maxVal) * (chartHeight - 8));
+    const guidePath = new Path();
+    guidePath.move(new Point(sidePadding, avgY));
+    guidePath.addLine(new Point(width - sidePadding, avgY));
+    dc.addPath(guidePath);
+    dc.setStrokeColor(new Color('#8E8E93', 0.28));
+    dc.setLineWidth(1.5);
+    dc.strokePath();
+
+    dc.setFont(Font.systemFont(14));
+    dc.setTextColor(new Color('#8E8E93', 0.8));
+    dc.setTextAlignedRight();
+    dc.drawTextInRect(`均 ${dailyStats.avgGB}G`, new Rect(width - sidePadding - 90, Math.max(0, avgY - 18), 90, 18));
+  }
+
+  // 2. 计算各天坐标点
+  const step = n > 1 ? availWidth / (n - 1) : availWidth / 2;
+  const points = days.map((item, i) => {
+    const x = sidePadding + (n === 1 ? availWidth / 2 : i * step);
+    const y = chartBottom - Math.round((item.gb / maxVal) * (chartHeight - 8));
+    return { x, y, item };
+  });
+
+  // 3. 绘制填充面积 (Area Gradient)
+  const areaPath = new Path();
+  areaPath.move(new Point(points[0].x, chartBottom));
+  for (const pt of points) {
+    areaPath.addLine(new Point(pt.x, pt.y));
+  }
+  areaPath.addLine(new Point(points[points.length - 1].x, chartBottom));
+  areaPath.closeSubpath();
+  dc.addPath(areaPath);
+  dc.setFillColor(new Color('#007AFF', 0.16));
+  dc.fillPath();
+
+  // 4. 绘制折线轨迹 (Line Path)
+  const linePath = new Path();
+  linePath.move(new Point(points[0].x, points[0].y));
+  for (let i = 1; i < points.length; i++) {
+    linePath.addLine(new Point(points[i].x, points[i].y));
+  }
+  dc.addPath(linePath);
+  dc.setStrokeColor(new Color('#007AFF'));
+  dc.setLineWidth(3);
+  dc.strokePath();
+
+  // 5. 绘制关键数据锚点与日期文字
+  for (let i = 0; i < points.length; i++) {
+    const pt = points[i];
+    const item = pt.item;
+
+    // 锚点圆点
+    const dotPath = new Path();
+    const radius = item.isToday ? 5 : 3;
+    dotPath.addEllipse(new Rect(pt.x - radius, pt.y - radius, radius * 2, radius * 2));
+    dc.addPath(dotPath);
+    dc.setFillColor(item.isToday ? new Color('#007AFF') : new Color('#5AC8FA'));
+    dc.fillPath();
+
+    if (item.isToday) {
+      // 外圈光晕
+      const haloPath = new Path();
+      haloPath.addEllipse(new Rect(pt.x - 8, pt.y - 8, 16, 16));
+      dc.addPath(haloPath);
+      dc.setStrokeColor(new Color('#007AFF', 0.35));
+      dc.setLineWidth(2);
+      dc.strokePath();
+    }
+
+    // X 轴刻度
+    let showLabel = false;
+    if (n <= 8) {
+      showLabel = true;
+    } else if (item.isToday || item.day === 1 || item.day % 5 === 0) {
+      showLabel = true;
+    }
+
+    if (showLabel) {
+      dc.setFont(item.isToday ? Font.boldSystemFont(15) : Font.systemFont(14));
+      dc.setTextColor(item.isToday ? new Color('#007AFF') : new Color('#8E8E93'));
+      dc.setTextAlignedCenter();
+      dc.drawTextInRect(`${item.day}`, new Rect(pt.x - 15, chartBottom + 4, 30, 20));
+    }
+  }
+
+  return dc.getImage();
 }
 
 // 渲染右下角版本号与刷新状态/时间
@@ -182,44 +526,102 @@ function renderStatusBadge(stack, data, isSmall = false) {
   timeText.textColor = data.isFromCache ? new Color('#FF9500') : new Color('#8E8E93');
 }
 
-// 绘制高度自定义的进度条
-function drawProgressBar(percent, width = 600, height = 14) {
-  const dc = new DrawContext();
-  dc.size = new Size(width, height);
-  dc.opaque = false;
-  dc.respectScreenScale = true;
+// ================= 组件尺寸视图渲染 =================
 
-  const bgPath = new Path();
-  bgPath.addRoundedRect(new Rect(0, 0, width, height), height / 2, height / 2);
-  dc.addPath(bgPath);
-  dc.setFillColor(new Color('#E5E5EA'));
-  dc.fillPath();
-
-  if (percent > 0) {
-    const fillWidth = Math.max(height, Math.min(width, (width * percent) / 100));
-    const fillPath = new Path();
-    fillPath.addRoundedRect(new Rect(0, 0, fillWidth, height), height / 2, height / 2);
-    dc.addPath(fillPath);
-    
-    let color = '#007AFF';
-    if (percent > 80) color = '#FF3B30';
-    else if (percent > 60) color = '#FF9500';
-    
-    dc.setFillColor(new Color(color));
-    dc.fillPath();
-  }
-
-  return dc.getImage();
-}
-
-// 中号小组件
+// 中号小组件 (Medium 核心主视图)
 function renderMediumWidget(widget, data) {
+  // 1. 顶部栏：套餐名称 + 重置提醒气泡
   const headerStack = widget.addStack();
   headerStack.layoutHorizontally();
   headerStack.centerAlignContent();
 
   const titleText = headerStack.addText(data.planName);
-  titleText.font = Font.boldSystemFont(14);
+  titleText.font = Font.boldSystemFont(13);
+  titleText.textColor = new Color('#1C1C1E');
+
+  headerStack.addSpacer();
+
+  const resetStack = headerStack.addStack();
+  resetStack.backgroundColor = new Color('#F2F4F7');
+  resetStack.cornerRadius = 5;
+  resetStack.setPadding(2, 6, 2, 6);
+
+  const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
+  resetText.font = Font.systemFont(10);
+  resetText.textColor = new Color('#007AFF');
+
+  widget.addSpacer(6);
+
+  // 2. 关键指标快速概览行
+  const metaStack = widget.addStack();
+  metaStack.layoutHorizontally();
+  metaStack.centerAlignContent();
+
+  // 剩余流量大字
+  const remLabel = metaStack.addText('剩余 ');
+  remLabel.font = Font.systemFont(11);
+  remLabel.textColor = new Color('#8E8E93');
+
+  const remVal = metaStack.addText(`${data.remainingGB} GB`);
+  remVal.font = Font.boldSystemFont(13);
+  remVal.textColor = new Color('#10B981');
+
+  metaStack.addSpacer(10);
+
+  // 今日已用与当月日均
+  const daily = data.dailyStats;
+  if (daily) {
+    const todayText = metaStack.addText(`今日 ${daily.todayGB}G · 日均 ${daily.avgGB}G`);
+    todayText.font = Font.systemFont(11);
+    todayText.textColor = new Color('#8E8E93');
+  }
+
+  metaStack.addSpacer();
+
+  // 当月累计总用量进度比
+  const usedRatioText = metaStack.addText(`已用 ${data.usedPercent}%`);
+  usedRatioText.font = Font.mediumSystemFont(11);
+  usedRatioText.textColor = new Color('#1C1C1E');
+
+  widget.addSpacer(6);
+
+  // 3. 核心图表区域 (宽幅展示当月每日用量趋势)
+  if (data.dailyStats) {
+    const chartImg = drawDailyTrafficChart(data.dailyStats, 640, 130, CONFIG.chart_type);
+    const chartWidgetImg = widget.addImage(chartImg);
+    chartWidgetImg.resizable = true;
+  } else {
+    // 降级使用普通进度条
+    const progressImg = drawProgressBar(data.usedPercent, 400, 10);
+    const progressWidgetImg = widget.addImage(progressImg);
+    progressWidgetImg.resizable = true;
+  }
+
+  widget.addSpacer(6);
+
+  // 4. 底部栏：到期时间与刷新状态
+  const footerStack = widget.addStack();
+  footerStack.layoutHorizontally();
+  footerStack.centerAlignContent();
+
+  const expireText = footerStack.addText(`到期: ${data.expireDateStr}`);
+  expireText.font = Font.systemFont(9);
+  expireText.textColor = new Color('#8E8E93');
+
+  footerStack.addSpacer();
+
+  renderStatusBadge(footerStack, data, false);
+}
+
+// 大号小组件 (Large 完整大图表视图)
+function renderLargeWidget(widget, data) {
+  // 1. 顶部套餐名称与重置状态
+  const headerStack = widget.addStack();
+  headerStack.layoutHorizontally();
+  headerStack.centerAlignContent();
+
+  const titleText = headerStack.addText(data.planName);
+  titleText.font = Font.boldSystemFont(16);
   titleText.textColor = new Color('#1C1C1E');
 
   headerStack.addSpacer();
@@ -228,67 +630,89 @@ function renderMediumWidget(widget, data) {
   resetStack.backgroundColor = new Color('#F2F4F7');
   resetStack.cornerRadius = 6;
   resetStack.setPadding(3, 8, 3, 8);
-  
   const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
   resetText.font = Font.systemFont(11);
   resetText.textColor = new Color('#007AFF');
 
-  widget.addSpacer(10);
+  widget.addSpacer(12);
 
-  const bodyStack = widget.addStack();
-  bodyStack.layoutHorizontally();
-  bodyStack.bottomAlignContent();
+  // 2. 剩余流量大卡片
+  const kpiStack = widget.addStack();
+  kpiStack.layoutHorizontally();
+  kpiStack.centerAlignContent();
 
-  const leftStack = bodyStack.addStack();
-  leftStack.layoutVertically();
+  const kpiLeft = kpiStack.addStack();
+  kpiLeft.layoutVertically();
 
-  const remLabel = leftStack.addText('剩余流量');
-  remLabel.font = Font.systemFont(11);
+  const remLabel = kpiLeft.addText('剩余流量');
+  remLabel.font = Font.systemFont(12);
   remLabel.textColor = new Color('#8E8E93');
 
-  leftStack.addSpacer(2);
-
-  const valStack = leftStack.addStack();
+  const valStack = kpiLeft.addStack();
   valStack.layoutHorizontally();
   valStack.bottomAlignContent();
 
   const remVal = valStack.addText(data.remainingGB);
-  remVal.font = Font.boldSystemFont(32);
+  remVal.font = Font.boldSystemFont(36);
   remVal.textColor = new Color('#10B981');
 
   valStack.addSpacer(4);
 
-  const unitStack = valStack.addStack();
-  unitStack.layoutVertically();
-  const unitText = unitStack.addText('GB');
-  unitText.font = Font.boldSystemFont(14);
+  const unitText = valStack.addText('GB');
+  unitText.font = Font.boldSystemFont(16);
   unitText.textColor = new Color('#10B981');
-  unitStack.addSpacer(4);
 
-  bodyStack.addSpacer();
+  kpiStack.addSpacer();
 
-  const rightStack = bodyStack.addStack();
-  rightStack.layoutVertically();
+  const kpiRight = kpiStack.addStack();
+  kpiRight.layoutVertically();
+  kpiRight.addSpacer();
 
-  const detailText = rightStack.addText(`已用 ${data.usedGB} / ${data.totalGB} GB`);
-  detailText.font = Font.mediumSystemFont(12);
-  detailText.textColor = new Color('#1C1C1E');
+  const totalText = kpiRight.addText(`总量 ${data.totalGB} GB`);
+  totalText.font = Font.mediumSystemFont(13);
+  totalText.textColor = new Color('#1C1C1E');
 
-  rightStack.addSpacer(2);
+  kpiRight.addSpacer(2);
 
-  const percentText = rightStack.addText(`已使用 ${data.usedPercent}%`);
-  percentText.font = Font.systemFont(11);
-  percentText.textColor = new Color('#8E8E93');
-  rightStack.addSpacer(10);
-
-  widget.addSpacer(12);
-
-  const progressImg = drawProgressBar(data.usedPercent, 400, 10);
-  const progressWidgetImg = widget.addImage(progressImg);
-  progressWidgetImg.resizable = true;
+  const usedText = kpiRight.addText(`已用 ${data.usedGB} GB (${data.usedPercent}%)`);
+  usedText.font = Font.systemFont(12);
+  usedText.textColor = new Color('#8E8E93');
 
   widget.addSpacer(10);
 
+  // 3. 总体进度条
+  const progressImg = drawProgressBar(data.usedPercent, 640, 10);
+  const progressWidgetImg = widget.addImage(progressImg);
+  progressWidgetImg.resizable = true;
+
+  widget.addSpacer(14);
+
+  // 4. 当月每日用量模块头部
+  const chartHeader = widget.addStack();
+  chartHeader.layoutHorizontally();
+  chartHeader.centerAlignContent();
+
+  const chartTitle = chartHeader.addText(`当月每日用量 (${data.dailyStats.currentMonth}月)`);
+  chartTitle.font = Font.boldSystemFont(13);
+  chartTitle.textColor = new Color('#1C1C1E');
+
+  chartHeader.addSpacer();
+
+  const daily = data.dailyStats;
+  const chartSub = chartHeader.addText(`今日 ${daily.todayGB}G · 日均 ${daily.avgGB}G · 最高 ${daily.maxGB}G`);
+  chartSub.font = Font.systemFont(11);
+  chartSub.textColor = new Color('#8E8E93');
+
+  widget.addSpacer(8);
+
+  // 5. 大尺寸当月用量图表
+  const chartImg = drawDailyTrafficChart(data.dailyStats, 640, 200, CONFIG.chart_type);
+  const chartWidgetImg = widget.addImage(chartImg);
+  chartWidgetImg.resizable = true;
+
+  widget.addSpacer(12);
+
+  // 6. 底部信息栏
   const footerStack = widget.addStack();
   footerStack.layoutHorizontally();
   footerStack.centerAlignContent();
@@ -302,7 +726,7 @@ function renderMediumWidget(widget, data) {
   renderStatusBadge(footerStack, data, false);
 }
 
-// 小号小组件
+// 小号小组件 (Small 紧凑视图)
 function renderSmallWidget(widget, data) {
   const titleText = widget.addText(data.planName);
   titleText.font = Font.boldSystemFont(12);
@@ -334,17 +758,26 @@ function renderSmallWidget(widget, data) {
   unitText.textColor = new Color('#10B981');
   unitStack.addSpacer(3);
 
-  widget.addSpacer(8);
+  widget.addSpacer(6);
 
+  // 进度条
   const progressImg = drawProgressBar(data.usedPercent, 200, 8);
   const progressWidgetImg = widget.addImage(progressImg);
   progressWidgetImg.resizable = true;
 
   widget.addSpacer(6);
 
-  const subText = widget.addText(`共 ${data.totalGB} GB · ${data.resetDaysLeft}天后重置`);
-  subText.font = Font.systemFont(10);
-  subText.textColor = new Color('#8E8E93');
+  // 紧凑每日用量信息
+  const daily = data.dailyStats;
+  if (daily) {
+    const dailyText = widget.addText(`今日 ${daily.todayGB}G · 日均 ${daily.avgGB}G`);
+    dailyText.font = Font.systemFont(9);
+    dailyText.textColor = new Color('#8E8E93');
+  } else {
+    const subText = widget.addText(`共 ${data.totalGB} GB · ${data.resetDaysLeft}天后重置`);
+    subText.font = Font.systemFont(9);
+    subText.textColor = new Color('#8E8E93');
+  }
 
   widget.addSpacer(2);
 
