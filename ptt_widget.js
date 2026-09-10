@@ -318,7 +318,7 @@ function drawDailyTrafficChart(dailyStats, width = 316, height = 64, type = CONF
   return drawDailyBarChart(dailyStats, width, height);
 }
 
-// 绘制每日用量柱状图 (Bar Chart) - 1:1 Retina 超清矢量渲染
+// 绘制每日用量柱状图 (Bar Chart) - 1:1 Retina 超清矢量渲染 (100% 满宽)
 function drawDailyBarChart(dailyStats, width = 316, height = 64) {
   const dc = new DrawContext();
   dc.size = new Size(width, height);
@@ -330,57 +330,57 @@ function drawDailyBarChart(dailyStats, width = 316, height = 64) {
   if (n === 0) return dc.getImage();
 
   const labelHeight = 16;
-  const topPadding = 8;
+  const topPadding = 12;
   const chartHeight = height - labelHeight - topPadding;
   const chartBottom = height - labelHeight;
 
   // 标尺上限 (至少为 1GB，防止除以 0)
-  const maxVal = Math.max(dailyStats.maxGB, 1.0);
+  const maxVal = Math.max(Number(dailyStats && dailyStats.maxGB) || 0, 1.0);
 
-  // 严密计算整数对齐的柱宽与间距，杜绝半像素虚边
-  const sidePadding = 6;
+  // 100% 撑满可用宽度，根据天数自适应间距
+  const sidePadding = 4;
   const availWidth = width - sidePadding * 2;
-  let gap, barWidth;
-  if (n <= 7) {
-    barWidth = 16;
-    gap = Math.min(14, Math.floor((availWidth - n * barWidth) / Math.max(1, n - 1)));
-  } else if (n <= 12) {
-    barWidth = 13;
-    gap = Math.min(8, Math.floor((availWidth - n * barWidth) / (n - 1)));
-  } else if (n <= 20) {
-    barWidth = 9;
-    gap = Math.min(5, Math.floor((availWidth - n * barWidth) / (n - 1)));
-  } else {
-    gap = 2;
-    barWidth = Math.floor((availWidth - (n - 1) * gap) / n);
-  }
-
-  const totalBarsWidth = n * barWidth + (n - 1) * gap;
+  const gap = n > 20 ? 2 : (n > 12 ? 3 : (n > 6 ? 4 : 5));
+  const barWidth = n === 1 ? 36 : Math.floor((availWidth - (n - 1) * gap) / n);
+  const totalBarsWidth = n === 1 ? barWidth : (n * barWidth + (n - 1) * gap);
   const startX = sidePadding + Math.floor((availWidth - totalBarsWidth) / 2);
 
-  // 1. 绘制日均参考水平细线 (清晰高锐度)
+  // 1. 绘制日均参考水平虚线 (Dashed Line)
   if (dailyStats.avgGB > 0) {
     const avgY = Math.round(chartBottom - (dailyStats.avgGB / maxVal) * (chartHeight - 4));
     const guidePath = new Path();
-    guidePath.move(new Point(sidePadding, avgY));
-    guidePath.addLine(new Point(width - sidePadding, avgY));
+    const dashLen = 4;
+    const gapLen = 3;
+    for (let x = sidePadding; x < width - sidePadding; x += dashLen + gapLen) {
+      guidePath.move(new Point(x, avgY));
+      guidePath.addLine(new Point(Math.min(x + dashLen, width - sidePadding), avgY));
+    }
     dc.addPath(guidePath);
-    dc.setStrokeColor(new Color('#8E8E93', 0.4));
+    dc.setStrokeColor(new Color('#8E8E93', 0.45));
     dc.setLineWidth(1);
     dc.strokePath();
 
-    // 绘制日均微标签
+    // 绘制日均微标签 (靠右上)
     dc.setFont(Font.systemFont(9));
     dc.setTextColor(new Color('#8E8E93'));
     dc.setTextAlignedRight();
-    dc.drawTextInRect(`均 ${dailyStats.avgGB}G`, new Rect(width - sidePadding - 60, Math.max(0, avgY - 12), 60, 12));
+    dc.drawTextInRect(`均 ${dailyStats.avgGB}G`, new Rect(width - sidePadding - 70, Math.max(0, avgY - 12), 70, 12));
   }
 
-  // 2. 循环绘制每日柱子与日期 (整数坐标对齐，颜色明朗)
+  // 2. 绘制今日用量微标签 (左上角清晰印在柱状图顶部)
+  if (dailyStats.todayGB !== undefined) {
+    dc.setFont(Font.boldSystemFont(9));
+    dc.setTextColor(new Color('#007AFF'));
+    dc.setTextAlignedLeft();
+    dc.drawTextInRect(`今日 ${dailyStats.todayGB}G`, new Rect(sidePadding, 0, 90, 13));
+  }
+
+  // 3. 循环绘制每日柱子与日期 (整数对齐，色彩饱和)
   for (let i = 0; i < n; i++) {
     const item = days[i];
     const x = startX + i * (barWidth + gap);
-    const barH = item.gb > 0 ? Math.max(3, Math.round((item.gb / maxVal) * (chartHeight - 4))) : 2;
+    const gbVal = Number(item.gb) || 0;
+    const barH = gbVal > 0 ? Math.max(3, Math.round((gbVal / maxVal) * (chartHeight - 4))) : 2;
     const y = chartBottom - barH;
 
     // 绘制柱子圆角矩形
@@ -392,16 +392,16 @@ function drawDailyBarChart(dailyStats, width = 316, height = 64) {
     if (item.isToday) {
       // 今日高亮主色 (饱满 iOS 纯蓝)
       dc.setFillColor(new Color('#007AFF'));
-    } else if (item.gb === 0) {
+    } else if (gbVal === 0) {
       // 零流量微灰底
       dc.setFillColor(new Color('#E5E5EA'));
     } else {
-      // 历史天高饱和度明快蓝 (清晰锐利，对比度高)
+      // 历史天高饱和度明快蓝 (清晰锐利)
       dc.setFillColor(new Color('#4A90E2'));
     }
     dc.fillPath();
 
-    // 3. 绘制 X 轴底部日期刻度 (清晰 9pt 矢量字号)
+    // 4. 绘制 X 轴底部日期刻度
     let showLabel = false;
     if (n <= 8) {
       showLabel = true;
@@ -413,7 +413,7 @@ function drawDailyBarChart(dailyStats, width = 316, height = 64) {
       dc.setFont(item.isToday ? Font.boldSystemFont(9) : Font.systemFont(9));
       dc.setTextColor(item.isToday ? new Color('#007AFF') : new Color('#636366'));
       dc.setTextAlignedCenter();
-      const labelW = Math.max(barWidth + 12, 20);
+      const labelW = Math.max(barWidth + 10, 18);
       dc.drawTextInRect(`${item.day}`, new Rect(Math.round(x - (labelW - barWidth) / 2), chartBottom + 2, labelW, 14));
     }
   }
@@ -433,28 +433,40 @@ function drawDailyLineChart(dailyStats, width = 316, height = 64) {
   if (n === 0) return dc.getImage();
 
   const labelHeight = 16;
-  const topPadding = 8;
+  const topPadding = 12;
   const chartHeight = height - labelHeight - topPadding;
   const chartBottom = height - labelHeight;
-  const sidePadding = 12;
+  const sidePadding = 8;
   const availWidth = width - sidePadding * 2;
-  const maxVal = Math.max(dailyStats.maxGB, 1.0);
+  const maxVal = Math.max(Number(dailyStats && dailyStats.maxGB) || 0, 1.0);
 
-  // 1. 均值参考线
+  // 1. 绘制日均参考水平虚线 (Dashed Line)
   if (dailyStats.avgGB > 0) {
     const avgY = Math.round(chartBottom - (dailyStats.avgGB / maxVal) * (chartHeight - 4));
     const guidePath = new Path();
-    guidePath.move(new Point(sidePadding, avgY));
-    guidePath.addLine(new Point(width - sidePadding, avgY));
+    const dashLen = 4;
+    const gapLen = 3;
+    for (let x = sidePadding; x < width - sidePadding; x += dashLen + gapLen) {
+      guidePath.move(new Point(x, avgY));
+      guidePath.addLine(new Point(Math.min(x + dashLen, width - sidePadding), avgY));
+    }
     dc.addPath(guidePath);
-    dc.setStrokeColor(new Color('#8E8E93', 0.4));
+    dc.setStrokeColor(new Color('#8E8E93', 0.45));
     dc.setLineWidth(1);
     dc.strokePath();
 
     dc.setFont(Font.systemFont(9));
     dc.setTextColor(new Color('#8E8E93'));
     dc.setTextAlignedRight();
-    dc.drawTextInRect(`均 ${dailyStats.avgGB}G`, new Rect(width - sidePadding - 60, Math.max(0, avgY - 12), 60, 12));
+    dc.drawTextInRect(`均 ${dailyStats.avgGB}G`, new Rect(width - sidePadding - 70, Math.max(0, avgY - 12), 70, 12));
+  }
+
+  // 2. 绘制今日用量微标签 (左上角)
+  if (dailyStats.todayGB !== undefined) {
+    dc.setFont(Font.boldSystemFont(9));
+    dc.setTextColor(new Color('#007AFF'));
+    dc.setTextAlignedLeft();
+    dc.drawTextInRect(`今日 ${dailyStats.todayGB}G`, new Rect(sidePadding, 0, 90, 13));
   }
 
   // 2. 计算各天坐标点 (整数对齐)
@@ -592,16 +604,6 @@ function renderMediumWidget(widget, data) {
   const remVal = metaStack.addText(`${data.remainingGB} GB`);
   remVal.font = Font.boldSystemFont(13);
   remVal.textColor = new Color('#10B981');
-
-  metaStack.addSpacer(10);
-
-  // 今日已用与当月日均
-  const daily = data.dailyStats;
-  if (daily) {
-    const todayText = metaStack.addText(`今日 ${daily.todayGB}G`);
-    todayText.font = Font.systemFont(11);
-    todayText.textColor = new Color('#8E8E93');
-  }
 
   metaStack.addSpacer();
 
