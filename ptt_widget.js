@@ -292,15 +292,15 @@ function drawProgressBar(percent, width = 600, height = 14) {
 }
 
 // 统一图表绘制入口 (支持柱状图与折线图)
-function drawDailyTrafficChart(dailyStats, width = 640, height = 140, type = CONFIG.chart_type) {
+function drawDailyTrafficChart(dailyStats, width = 316, height = 64, type = CONFIG.chart_type) {
   if (type === 'line') {
     return drawDailyLineChart(dailyStats, width, height);
   }
   return drawDailyBarChart(dailyStats, width, height);
 }
 
-// 绘制每日用量柱状图 (Bar Chart)
-function drawDailyBarChart(dailyStats, width = 640, height = 140) {
+// 绘制每日用量柱状图 (Bar Chart) - 1:1 Retina 超清矢量渲染
+function drawDailyBarChart(dailyStats, width = 316, height = 64) {
   const dc = new DrawContext();
   dc.size = new Size(width, height);
   dc.opaque = false;
@@ -310,68 +310,79 @@ function drawDailyBarChart(dailyStats, width = 640, height = 140) {
   const n = days.length;
   if (n === 0) return dc.getImage();
 
-  const labelHeight = 24;
-  const topPadding = 16;
+  const labelHeight = 16;
+  const topPadding = 8;
   const chartHeight = height - labelHeight - topPadding;
   const chartBottom = height - labelHeight;
 
   // 标尺上限 (至少为 1GB，防止除以 0)
   const maxVal = Math.max(dailyStats.maxGB, 1.0);
 
-  // 计算每根柱子的宽度与间隙
-  const sidePadding = 12;
+  // 严密计算整数对齐的柱宽与间距，杜绝半像素虚边
+  const sidePadding = 6;
   const availWidth = width - sidePadding * 2;
-  const maxBarWidth = 26;
-  let gap = Math.max(4, Math.floor(availWidth / (n * 3.2)));
-  let barWidth = Math.max(6, Math.min(maxBarWidth, Math.floor((availWidth - (n - 1) * gap) / n)));
+  let gap, barWidth;
+  if (n <= 7) {
+    barWidth = 16;
+    gap = Math.min(14, Math.floor((availWidth - n * barWidth) / Math.max(1, n - 1)));
+  } else if (n <= 12) {
+    barWidth = 13;
+    gap = Math.min(8, Math.floor((availWidth - n * barWidth) / (n - 1)));
+  } else if (n <= 20) {
+    barWidth = 9;
+    gap = Math.min(5, Math.floor((availWidth - n * barWidth) / (n - 1)));
+  } else {
+    gap = 2;
+    barWidth = Math.floor((availWidth - (n - 1) * gap) / n);
+  }
+
   const totalBarsWidth = n * barWidth + (n - 1) * gap;
   const startX = sidePadding + Math.floor((availWidth - totalBarsWidth) / 2);
 
-  // 1. 绘制日均参考参考虚线/浅色辅助线
+  // 1. 绘制日均参考水平细线 (清晰高锐度)
   if (dailyStats.avgGB > 0) {
-    const avgY = chartBottom - Math.round((dailyStats.avgGB / maxVal) * (chartHeight - 8));
+    const avgY = Math.round(chartBottom - (dailyStats.avgGB / maxVal) * (chartHeight - 4));
     const guidePath = new Path();
     guidePath.move(new Point(sidePadding, avgY));
     guidePath.addLine(new Point(width - sidePadding, avgY));
     dc.addPath(guidePath);
-    dc.setStrokeColor(new Color('#8E8E93', 0.28));
-    dc.setLineWidth(1.5);
+    dc.setStrokeColor(new Color('#8E8E93', 0.4));
+    dc.setLineWidth(1);
     dc.strokePath();
 
-    // 绘制日均标签文字 (靠右侧微标)
-    dc.setFont(Font.systemFont(14));
-    dc.setTextColor(new Color('#8E8E93', 0.8));
+    // 绘制日均微标签
+    dc.setFont(Font.systemFont(9));
+    dc.setTextColor(new Color('#8E8E93'));
     dc.setTextAlignedRight();
-    dc.drawTextInRect(`均 ${dailyStats.avgGB}G`, new Rect(width - sidePadding - 90, Math.max(0, avgY - 18), 90, 18));
+    dc.drawTextInRect(`均 ${dailyStats.avgGB}G`, new Rect(width - sidePadding - 60, Math.max(0, avgY - 12), 60, 12));
   }
 
-  // 2. 循环绘制每日柱子与日期
+  // 2. 循环绘制每日柱子与日期 (整数坐标对齐，颜色明朗)
   for (let i = 0; i < n; i++) {
     const item = days[i];
     const x = startX + i * (barWidth + gap);
-    const barH = item.gb > 0 ? Math.max(4, Math.round((item.gb / maxVal) * (chartHeight - 8))) : 3;
+    const barH = item.gb > 0 ? Math.max(3, Math.round((item.gb / maxVal) * (chartHeight - 4))) : 2;
     const y = chartBottom - barH;
 
-    // 绘制柱子本体 (圆角矩形)
+    // 绘制柱子圆角矩形
     const barPath = new Path();
-    const cornerRadius = Math.min(4, Math.floor(barWidth / 2));
+    const cornerRadius = Math.min(3, Math.floor(barWidth / 2));
     barPath.addRoundedRect(new Rect(x, y, barWidth, barH), cornerRadius, cornerRadius);
     dc.addPath(barPath);
 
     if (item.isToday) {
-      // 今日高亮主色 (iOS 经典蓝)
+      // 今日高亮主色 (饱满 iOS 纯蓝)
       dc.setFillColor(new Color('#007AFF'));
     } else if (item.gb === 0) {
-      // 无用量浅灰底
+      // 零流量微灰底
       dc.setFillColor(new Color('#E5E5EA'));
     } else {
-      // 过去日期柔和灰蓝
-      dc.setFillColor(new Color('#82B1FF'));
+      // 历史天高饱和度明快蓝 (清晰锐利，对比度高)
+      dc.setFillColor(new Color('#4A90E2'));
     }
     dc.fillPath();
 
-    // 3. 绘制 X 轴底部日期刻度
-    // 策略：总天数少时显示关键天，总天数多时显示 1号、5号、10号、15号...以及今天
+    // 3. 绘制 X 轴底部日期刻度 (清晰 9pt 矢量字号)
     let showLabel = false;
     if (n <= 8) {
       showLabel = true;
@@ -380,19 +391,19 @@ function drawDailyBarChart(dailyStats, width = 640, height = 140) {
     }
 
     if (showLabel) {
-      dc.setFont(item.isToday ? Font.boldSystemFont(15) : Font.systemFont(14));
-      dc.setTextColor(item.isToday ? new Color('#007AFF') : new Color('#8E8E93'));
+      dc.setFont(item.isToday ? Font.boldSystemFont(9) : Font.systemFont(9));
+      dc.setTextColor(item.isToday ? new Color('#007AFF') : new Color('#636366'));
       dc.setTextAlignedCenter();
-      const labelW = Math.max(barWidth + 16, 26);
-      dc.drawTextInRect(`${item.day}`, new Rect(x - (labelW - barWidth) / 2, chartBottom + 4, labelW, 20));
+      const labelW = Math.max(barWidth + 12, 20);
+      dc.drawTextInRect(`${item.day}`, new Rect(Math.round(x - (labelW - barWidth) / 2), chartBottom + 2, labelW, 14));
     }
   }
 
   return dc.getImage();
 }
 
-// 绘制每日用量折线/面积图 (Line Chart)
-function drawDailyLineChart(dailyStats, width = 640, height = 140) {
+// 绘制每日用量折线/面积图 (Line Chart) - 1:1 Retina 超清矢量渲染
+function drawDailyLineChart(dailyStats, width = 316, height = 64) {
   const dc = new DrawContext();
   dc.size = new Size(width, height);
   dc.opaque = false;
@@ -402,40 +413,40 @@ function drawDailyLineChart(dailyStats, width = 640, height = 140) {
   const n = days.length;
   if (n === 0) return dc.getImage();
 
-  const labelHeight = 24;
-  const topPadding = 18;
+  const labelHeight = 16;
+  const topPadding = 8;
   const chartHeight = height - labelHeight - topPadding;
   const chartBottom = height - labelHeight;
-  const sidePadding = 24;
+  const sidePadding = 12;
   const availWidth = width - sidePadding * 2;
   const maxVal = Math.max(dailyStats.maxGB, 1.0);
 
   // 1. 均值参考线
   if (dailyStats.avgGB > 0) {
-    const avgY = chartBottom - Math.round((dailyStats.avgGB / maxVal) * (chartHeight - 8));
+    const avgY = Math.round(chartBottom - (dailyStats.avgGB / maxVal) * (chartHeight - 4));
     const guidePath = new Path();
     guidePath.move(new Point(sidePadding, avgY));
     guidePath.addLine(new Point(width - sidePadding, avgY));
     dc.addPath(guidePath);
-    dc.setStrokeColor(new Color('#8E8E93', 0.28));
-    dc.setLineWidth(1.5);
+    dc.setStrokeColor(new Color('#8E8E93', 0.4));
+    dc.setLineWidth(1);
     dc.strokePath();
 
-    dc.setFont(Font.systemFont(14));
-    dc.setTextColor(new Color('#8E8E93', 0.8));
+    dc.setFont(Font.systemFont(9));
+    dc.setTextColor(new Color('#8E8E93'));
     dc.setTextAlignedRight();
-    dc.drawTextInRect(`均 ${dailyStats.avgGB}G`, new Rect(width - sidePadding - 90, Math.max(0, avgY - 18), 90, 18));
+    dc.drawTextInRect(`均 ${dailyStats.avgGB}G`, new Rect(width - sidePadding - 60, Math.max(0, avgY - 12), 60, 12));
   }
 
-  // 2. 计算各天坐标点
+  // 2. 计算各天坐标点 (整数对齐)
   const step = n > 1 ? availWidth / (n - 1) : availWidth / 2;
   const points = days.map((item, i) => {
-    const x = sidePadding + (n === 1 ? availWidth / 2 : i * step);
-    const y = chartBottom - Math.round((item.gb / maxVal) * (chartHeight - 8));
+    const x = Math.round(sidePadding + (n === 1 ? availWidth / 2 : i * step));
+    const y = Math.round(chartBottom - (item.gb / maxVal) * (chartHeight - 4));
     return { x, y, item };
   });
 
-  // 3. 绘制填充面积 (Area Gradient)
+  // 3. 绘制填充面积
   const areaPath = new Path();
   areaPath.move(new Point(points[0].x, chartBottom));
   for (const pt of points) {
@@ -444,10 +455,10 @@ function drawDailyLineChart(dailyStats, width = 640, height = 140) {
   areaPath.addLine(new Point(points[points.length - 1].x, chartBottom));
   areaPath.closeSubpath();
   dc.addPath(areaPath);
-  dc.setFillColor(new Color('#007AFF', 0.16));
+  dc.setFillColor(new Color('#007AFF', 0.14));
   dc.fillPath();
 
-  // 4. 绘制折线轨迹 (Line Path)
+  // 4. 绘制折线轨迹
   const linePath = new Path();
   linePath.move(new Point(points[0].x, points[0].y));
   for (let i = 1; i < points.length; i++) {
@@ -455,7 +466,7 @@ function drawDailyLineChart(dailyStats, width = 640, height = 140) {
   }
   dc.addPath(linePath);
   dc.setStrokeColor(new Color('#007AFF'));
-  dc.setLineWidth(3);
+  dc.setLineWidth(2);
   dc.strokePath();
 
   // 5. 绘制关键数据锚点与日期文字
@@ -463,25 +474,22 @@ function drawDailyLineChart(dailyStats, width = 640, height = 140) {
     const pt = points[i];
     const item = pt.item;
 
-    // 锚点圆点
     const dotPath = new Path();
-    const radius = item.isToday ? 5 : 3;
+    const radius = item.isToday ? 3.5 : 2;
     dotPath.addEllipse(new Rect(pt.x - radius, pt.y - radius, radius * 2, radius * 2));
     dc.addPath(dotPath);
-    dc.setFillColor(item.isToday ? new Color('#007AFF') : new Color('#5AC8FA'));
+    dc.setFillColor(item.isToday ? new Color('#007AFF') : new Color('#4A90E2'));
     dc.fillPath();
 
     if (item.isToday) {
-      // 外圈光晕
       const haloPath = new Path();
-      haloPath.addEllipse(new Rect(pt.x - 8, pt.y - 8, 16, 16));
+      haloPath.addEllipse(new Rect(pt.x - 6, pt.y - 6, 12, 12));
       dc.addPath(haloPath);
       dc.setStrokeColor(new Color('#007AFF', 0.35));
-      dc.setLineWidth(2);
+      dc.setLineWidth(1.5);
       dc.strokePath();
     }
 
-    // X 轴刻度
     let showLabel = false;
     if (n <= 8) {
       showLabel = true;
@@ -490,10 +498,10 @@ function drawDailyLineChart(dailyStats, width = 640, height = 140) {
     }
 
     if (showLabel) {
-      dc.setFont(item.isToday ? Font.boldSystemFont(15) : Font.systemFont(14));
-      dc.setTextColor(item.isToday ? new Color('#007AFF') : new Color('#8E8E93'));
+      dc.setFont(item.isToday ? Font.boldSystemFont(9) : Font.systemFont(9));
+      dc.setTextColor(item.isToday ? new Color('#007AFF') : new Color('#636366'));
       dc.setTextAlignedCenter();
-      dc.drawTextInRect(`${item.day}`, new Rect(pt.x - 15, chartBottom + 4, 30, 20));
+      dc.drawTextInRect(`${item.day}`, new Rect(pt.x - 12, chartBottom + 2, 24, 14));
     }
   }
 
@@ -585,16 +593,20 @@ function renderMediumWidget(widget, data) {
 
   widget.addSpacer(6);
 
-  // 3. 核心图表区域 (宽幅展示当月每日用量趋势)
+  // 3. 核心图表区域 (1:1 点对点高清晰度渲染)
   if (data.dailyStats) {
-    const chartImg = drawDailyTrafficChart(data.dailyStats, 640, 130, CONFIG.chart_type);
+    const chartW = 316;
+    const chartH = 64;
+    const chartImg = drawDailyTrafficChart(data.dailyStats, chartW, chartH, CONFIG.chart_type);
     const chartWidgetImg = widget.addImage(chartImg);
-    chartWidgetImg.resizable = true;
+    chartWidgetImg.imageSize = new Size(chartW, chartH);
+    chartWidgetImg.resizable = false;
   } else {
     // 降级使用普通进度条
-    const progressImg = drawProgressBar(data.usedPercent, 400, 10);
+    const progressImg = drawProgressBar(data.usedPercent, 316, 10);
     const progressWidgetImg = widget.addImage(progressImg);
-    progressWidgetImg.resizable = true;
+    progressWidgetImg.imageSize = new Size(316, 10);
+    progressWidgetImg.resizable = false;
   }
 
   widget.addSpacer(6);
@@ -681,9 +693,10 @@ function renderLargeWidget(widget, data) {
   widget.addSpacer(10);
 
   // 3. 总体进度条
-  const progressImg = drawProgressBar(data.usedPercent, 640, 10);
+  const progressImg = drawProgressBar(data.usedPercent, 328, 10);
   const progressWidgetImg = widget.addImage(progressImg);
-  progressWidgetImg.resizable = true;
+  progressWidgetImg.imageSize = new Size(328, 10);
+  progressWidgetImg.resizable = false;
 
   widget.addSpacer(14);
 
@@ -705,10 +718,13 @@ function renderLargeWidget(widget, data) {
 
   widget.addSpacer(8);
 
-  // 5. 大尺寸当月用量图表
-  const chartImg = drawDailyTrafficChart(data.dailyStats, 640, 200, CONFIG.chart_type);
+  // 5. 大尺寸当月用量图表 (1:1 高清对齐)
+  const chartW = 328;
+  const chartH = 130;
+  const chartImg = drawDailyTrafficChart(data.dailyStats, chartW, chartH, CONFIG.chart_type);
   const chartWidgetImg = widget.addImage(chartImg);
-  chartWidgetImg.resizable = true;
+  chartWidgetImg.imageSize = new Size(chartW, chartH);
+  chartWidgetImg.resizable = false;
 
   widget.addSpacer(12);
 
