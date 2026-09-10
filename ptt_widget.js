@@ -364,7 +364,23 @@ function drawDailyBarChart(dailyStats, width = 328, height = 64) {
   const totalBarsWidth = n === 1 ? barWidth : (n * barWidth + (n - 1) * gap);
   const startX = sidePadding + Math.floor((availWidth - totalBarsWidth) / 2);
 
-  // 1. 循环绘制每日柱子与底部刻度 (先绘制柱体，确保文字标签置于顶层)
+  // 1. 绘制日均参考水平虚线 (Dashed Line) - 作为背景参考线
+  if (dailyStats && dailyStats.avgGB > 0) {
+    const avgY = Math.round(chartBottom - (dailyStats.avgGB / maxVal) * (chartHeight - 4));
+    const guidePath = new Path();
+    const dashLen = 4;
+    const gapLen = 3;
+    for (let x = sidePadding; x < width - sidePadding; x += dashLen + gapLen) {
+      guidePath.move(new Point(x, avgY));
+      guidePath.addLine(new Point(Math.min(x + dashLen, width - sidePadding), avgY));
+    }
+    dc.addPath(guidePath);
+    dc.setStrokeColor(new Color('#8E8E93', 0.45));
+    dc.setLineWidth(1);
+    dc.strokePath();
+  }
+
+  // 2. 循环绘制每日柱子与底部刻度 (先绘制柱体，确保文字标签置于顶层)
   let todayX = startX;
   let todayBarW = barWidth;
   let hasToday = false;
@@ -459,7 +475,23 @@ function drawDailyLineChart(dailyStats, width = 328, height = 64) {
   const availWidth = width - sidePadding * 2;
   const maxVal = Math.max(Number(dailyStats && dailyStats.maxGB) || 0, 1.0);
 
-  // 1. 计算各天坐标点 (整数对齐)
+  // 1. 绘制日均参考水平虚线 (Dashed Line) - 作为背景参考线
+  if (dailyStats && dailyStats.avgGB > 0) {
+    const avgY = Math.round(chartBottom - (dailyStats.avgGB / maxVal) * (chartHeight - 4));
+    const guidePath = new Path();
+    const dashLen = 4;
+    const gapLen = 3;
+    for (let x = sidePadding; x < width - sidePadding; x += dashLen + gapLen) {
+      guidePath.move(new Point(x, avgY));
+      guidePath.addLine(new Point(Math.min(x + dashLen, width - sidePadding), avgY));
+    }
+    dc.addPath(guidePath);
+    dc.setStrokeColor(new Color('#8E8E93', 0.45));
+    dc.setLineWidth(1);
+    dc.strokePath();
+  }
+
+  // 2. 计算各天坐标点 (整数对齐)
   const step = n > 1 ? availWidth / (n - 1) : availWidth / 2;
   let todayPt = null;
   const points = days.map((item, i) => {
@@ -734,10 +766,11 @@ function renderLargeWidget(widget, data) {
 
   heroCard.addSpacer(8);
 
-  // 进度条 (100% 满宽自适应)
-  const progressImg = drawProgressBar(data.usedPercent, chartW, 8);
+  // 进度条 (与卡片内容区等宽对齐)
+  const heroContentW = chartW - 28;
+  const progressImg = drawProgressBar(data.usedPercent, heroContentW, 8);
   const progressWidgetImg = heroCard.addImage(progressImg);
-  progressWidgetImg.imageSize = new Size(chartW, 8);
+  progressWidgetImg.imageSize = new Size(heroContentW, 8);
   progressWidgetImg.resizable = true;
 
   widget.addSpacer(10);
@@ -776,7 +809,7 @@ function renderLargeWidget(widget, data) {
       val.centerAlignText();
 
       if (i < items.length - 1) {
-        gridStack.addSpacer(6);
+        gridStack.addSpacer();
       }
     }
 
@@ -894,9 +927,9 @@ function renderExtraLargeWidget(widget, data) {
 
   heroCard.addSpacer(6);
 
-  const progressImg = drawProgressBar(data.usedPercent, 310, 8);
+  const progressImg = drawProgressBar(data.usedPercent, 282, 8);
   const progressWidgetImg = heroCard.addImage(progressImg);
-  progressWidgetImg.imageSize = new Size(310, 8);
+  progressWidgetImg.imageSize = new Size(282, 8);
   progressWidgetImg.resizable = true;
 
   leftCol.addSpacer(12);
@@ -910,7 +943,7 @@ function renderExtraLargeWidget(widget, data) {
 
     const items = [
       { label: '今日已用', val: `${daily.todayGB}G`, color: '#007AFF' },
-      { label: '当月日均', val: `${daily.avgGB}G`, color: '#1C1C1E' },
+      { label: '剩余天数', val: `${data.resetDaysLeft}天`, color: '#1C1C1E' },
       { label: '单日最高', val: `${daily.maxGB}G`, color: '#FF9500' },
       { label: '当月累计', val: `${daily.monthTotalGB}G`, color: '#1C1C1E' }
     ];
@@ -934,7 +967,7 @@ function renderExtraLargeWidget(widget, data) {
       val.textColor = new Color(items[i].color);
       val.centerAlignText();
 
-      if (i < items.length - 1) gridStack.addSpacer(6);
+      if (i < items.length - 1) gridStack.addSpacer();
     }
   }
 
