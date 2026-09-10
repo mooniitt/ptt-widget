@@ -23,10 +23,13 @@ const CONFIG = {
 // ================= 主逻辑 =================
 async function main() {
   const widget = new ListWidget();
-  widget.backgroundColor = new Color('#FFFFFF');
-  widget.setPadding(14, 16, 14, 16);
-
   const widgetSize = config.widgetFamily || 'medium';
+  const isAccessory = widgetSize.startsWith('accessory');
+
+  if (!isAccessory) {
+    widget.backgroundColor = new Color('#FFFFFF');
+    widget.setPadding(14, 16, 14, 16);
+  }
 
   try {
     if (!CONFIG.token) {
@@ -35,8 +38,16 @@ async function main() {
       const data = await fetchData();
       if (!data) {
         renderErrorWidget(widget, '服务不可用');
+      } else if (widgetSize === 'accessoryRectangular') {
+        renderAccessoryRectangular(widget, data);
+      } else if (widgetSize === 'accessoryCircular') {
+        renderAccessoryCircular(widget, data);
+      } else if (widgetSize === 'accessoryInline') {
+        renderAccessoryInline(widget, data);
       } else if (widgetSize === 'small') {
         renderSmallWidget(widget, data);
+      } else if (widgetSize === 'extraLarge') {
+        renderExtraLargeWidget(widget, data);
       } else if (widgetSize === 'large') {
         renderLargeWidget(widget, data);
       } else {
@@ -55,6 +66,14 @@ async function main() {
       await widget.presentSmall();
     } else if (widgetSize === 'large') {
       await widget.presentLarge();
+    } else if (widgetSize === 'extraLarge') {
+      if (typeof widget.presentExtraLarge === 'function') {
+        await widget.presentExtraLarge();
+      } else {
+        await widget.presentLarge();
+      }
+    } else if (isAccessory) {
+      await widget.presentSmall();
     } else {
       await widget.presentMedium();
     }
@@ -625,10 +644,189 @@ function renderMediumWidget(widget, data) {
   renderStatusBadge(footerStack, data, false);
 }
 
-// 大号小组件 (Large 完整大图表视图)
+// 大号小组件 (Large 完整五段式高质感数据看板)
 function renderLargeWidget(widget, data) {
-  // 1. 顶部套餐名称与重置状态
+  // 1. 顶部栏：套餐名称 + 重置倒计时胶囊
   const headerStack = widget.addStack();
+  headerStack.layoutHorizontally();
+  headerStack.centerAlignContent();
+
+  const titleText = headerStack.addText(data.planName);
+  titleText.font = Font.boldSystemFont(15);
+  titleText.textColor = new Color('#1C1C1E');
+  titleText.lineLimit = 1;
+
+  headerStack.addSpacer();
+
+  const resetStack = headerStack.addStack();
+  resetStack.backgroundColor = new Color('#F2F4F7');
+  resetStack.cornerRadius = 6;
+  resetStack.setPadding(3, 8, 3, 8);
+  const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
+  resetText.font = Font.systemFont(11);
+  resetText.textColor = new Color('#007AFF');
+
+  widget.addSpacer(10);
+
+  // 2. 核心资产与进度卡片 (Hero Card)
+  const heroCard = widget.addStack();
+  heroCard.layoutVertically();
+  heroCard.backgroundColor = new Color('#F8F9FA');
+  heroCard.cornerRadius = 10;
+  heroCard.setPadding(10, 12, 10, 12);
+
+  const heroTop = heroCard.addStack();
+  heroTop.layoutHorizontally();
+  heroTop.centerAlignContent();
+
+  // 左侧剩余流量
+  const heroLeft = heroTop.addStack();
+  heroLeft.layoutVertically();
+
+  const remLabel = heroLeft.addText('剩余流量');
+  remLabel.font = Font.systemFont(11);
+  remLabel.textColor = new Color('#8E8E93');
+
+  heroLeft.addSpacer(2);
+
+  const valStack = heroLeft.addStack();
+  valStack.layoutHorizontally();
+  valStack.bottomAlignContent();
+
+  const remVal = valStack.addText(data.remainingGB);
+  remVal.font = Font.boldSystemFont(28);
+  remVal.textColor = new Color('#10B981');
+
+  valStack.addSpacer(3);
+
+  const unitText = valStack.addText('GB');
+  unitText.font = Font.boldSystemFont(13);
+  unitText.textColor = new Color('#10B981');
+
+  heroTop.addSpacer();
+
+  // 右侧配额详情
+  const heroRight = heroTop.addStack();
+  heroRight.layoutVertically();
+
+  const quotaText = heroRight.addText(`总量 ${data.totalGB} GB`);
+  quotaText.font = Font.mediumSystemFont(12);
+  quotaText.textColor = new Color('#1C1C1E');
+
+  heroRight.addSpacer(2);
+
+  const usedText = heroRight.addText(`已用 ${data.usedGB} GB (${data.usedPercent}%)`);
+  usedText.font = Font.systemFont(11);
+  usedText.textColor = new Color('#8E8E93');
+
+  heroCard.addSpacer(8);
+
+  // 进度条
+  const progressImg = drawProgressBar(data.usedPercent, 296, 7);
+  const progressWidgetImg = heroCard.addImage(progressImg);
+  progressWidgetImg.imageSize = new Size(296, 7);
+  progressWidgetImg.resizable = false;
+
+  widget.addSpacer(10);
+
+  // 3. 四宫格核心数据指标胶囊 (KPI 4-Grid)
+  const daily = data.dailyStats;
+  if (daily) {
+    const gridStack = widget.addStack();
+    gridStack.layoutHorizontally();
+    gridStack.centerAlignContent();
+
+    const items = [
+      { label: '今日已用', val: `${daily.todayGB} G`, color: '#007AFF' },
+      { label: '当月日均', val: `${daily.avgGB} G`, color: '#1C1C1E' },
+      { label: '单日峰值', val: `${daily.maxGB} G`, color: '#FF9500' },
+      { label: '当月累计', val: `${daily.monthTotalGB} G`, color: '#1C1C1E' }
+    ];
+
+    for (let i = 0; i < items.length; i++) {
+      const col = gridStack.addStack();
+      col.layoutVertically();
+      col.backgroundColor = new Color('#F8F9FA');
+      col.cornerRadius = 8;
+      col.setPadding(6, 6, 6, 6);
+
+      const lbl = col.addText(items[i].label);
+      lbl.font = Font.systemFont(9);
+      lbl.textColor = new Color('#8E8E93');
+      lbl.centerAlignText();
+
+      col.addSpacer(2);
+
+      const val = col.addText(items[i].val);
+      val.font = Font.boldSystemFont(12);
+      val.textColor = new Color(items[i].color);
+      val.centerAlignText();
+
+      if (i < items.length - 1) {
+        gridStack.addSpacer(6);
+      }
+    }
+
+    widget.addSpacer(10);
+  }
+
+  // 4. 当月每日用量全景大图表 (Full Chart Section)
+  const chartCard = widget.addStack();
+  chartCard.layoutVertically();
+
+  const chartHeader = chartCard.addStack();
+  chartHeader.layoutHorizontally();
+  chartHeader.centerAlignContent();
+
+  const chartTitle = chartHeader.addText(`当月每日用量 (${data.dailyStats ? data.dailyStats.currentMonth : ''}月)`);
+  chartTitle.font = Font.boldSystemFont(12);
+  chartTitle.textColor = new Color('#1C1C1E');
+
+  chartHeader.addSpacer();
+
+  const chartSub = chartHeader.addText('今日高亮 · 均线参考');
+  chartSub.font = Font.systemFont(10);
+  chartSub.textColor = new Color('#8E8E93');
+
+  chartCard.addSpacer(6);
+
+  // 1:1 大尺寸高清图表 (宽 316, 高 100)
+  if (data.dailyStats) {
+    const chartW = 316;
+    const chartH = 100;
+    const chartImg = drawDailyTrafficChart(data.dailyStats, chartW, chartH, CONFIG.chart_type);
+    const chartWidgetImg = chartCard.addImage(chartImg);
+    chartWidgetImg.imageSize = new Size(chartW, chartH);
+    chartWidgetImg.resizable = false;
+  }
+
+  widget.addSpacer(8);
+
+  // 5. 底部状态栏
+  const footerStack = widget.addStack();
+  footerStack.layoutHorizontally();
+  footerStack.centerAlignContent();
+
+  const expireText = footerStack.addText(`到期: ${data.expireDateStr}`);
+  expireText.font = Font.systemFont(9);
+  expireText.textColor = new Color('#8E8E93');
+
+  footerStack.addSpacer();
+
+  renderStatusBadge(footerStack, data, false);
+}
+
+// iPad 超大号小组件 (ExtraLarge 左右双栏视野)
+function renderExtraLargeWidget(widget, data) {
+  const container = widget.addStack();
+  container.layoutHorizontally();
+  container.centerAlignContent();
+
+  // 左栏：资产卡片与核心指标
+  const leftCol = container.addStack();
+  leftCol.layoutVertically();
+
+  const headerStack = leftCol.addStack();
   headerStack.layoutHorizontally();
   headerStack.centerAlignContent();
 
@@ -646,21 +844,21 @@ function renderLargeWidget(widget, data) {
   resetText.font = Font.systemFont(11);
   resetText.textColor = new Color('#007AFF');
 
-  widget.addSpacer(12);
+  leftCol.addSpacer(12);
 
-  // 2. 剩余流量大卡片
-  const kpiStack = widget.addStack();
-  kpiStack.layoutHorizontally();
-  kpiStack.centerAlignContent();
+  const heroCard = leftCol.addStack();
+  heroCard.layoutVertically();
+  heroCard.backgroundColor = new Color('#F8F9FA');
+  heroCard.cornerRadius = 10;
+  heroCard.setPadding(12, 14, 12, 14);
 
-  const kpiLeft = kpiStack.addStack();
-  kpiLeft.layoutVertically();
-
-  const remLabel = kpiLeft.addText('剩余流量');
+  const remLabel = heroCard.addText('剩余可用流量');
   remLabel.font = Font.systemFont(12);
   remLabel.textColor = new Color('#8E8E93');
 
-  const valStack = kpiLeft.addStack();
+  heroCard.addSpacer(4);
+
+  const valStack = heroCard.addStack();
   valStack.layoutHorizontally();
   valStack.bottomAlignContent();
 
@@ -669,77 +867,149 @@ function renderLargeWidget(widget, data) {
   remVal.textColor = new Color('#10B981');
 
   valStack.addSpacer(4);
-
   const unitText = valStack.addText('GB');
   unitText.font = Font.boldSystemFont(16);
   unitText.textColor = new Color('#10B981');
 
-  kpiStack.addSpacer();
+  heroCard.addSpacer(10);
 
-  const kpiRight = kpiStack.addStack();
-  kpiRight.layoutVertically();
-  kpiRight.addSpacer();
+  const subText = heroCard.addText(`已用 ${data.usedGB} / ${data.totalGB} GB (${data.usedPercent}%)`);
+  subText.font = Font.systemFont(12);
+  subText.textColor = new Color('#1C1C1E');
 
-  const totalText = kpiRight.addText(`总量 ${data.totalGB} GB`);
-  totalText.font = Font.mediumSystemFont(13);
-  totalText.textColor = new Color('#1C1C1E');
+  heroCard.addSpacer(6);
 
-  kpiRight.addSpacer(2);
-
-  const usedText = kpiRight.addText(`已用 ${data.usedGB} GB (${data.usedPercent}%)`);
-  usedText.font = Font.systemFont(12);
-  usedText.textColor = new Color('#8E8E93');
-
-  widget.addSpacer(10);
-
-  // 3. 总体进度条
-  const progressImg = drawProgressBar(data.usedPercent, 328, 10);
-  const progressWidgetImg = widget.addImage(progressImg);
-  progressWidgetImg.imageSize = new Size(328, 10);
+  const progressImg = drawProgressBar(data.usedPercent, 310, 8);
+  const progressWidgetImg = heroCard.addImage(progressImg);
+  progressWidgetImg.imageSize = new Size(310, 8);
   progressWidgetImg.resizable = false;
 
-  widget.addSpacer(14);
+  leftCol.addSpacer(12);
 
-  // 4. 当月每日用量模块头部
-  const chartHeader = widget.addStack();
-  chartHeader.layoutHorizontally();
-  chartHeader.centerAlignContent();
-
-  const chartTitle = chartHeader.addText(`当月每日用量 (${data.dailyStats.currentMonth}月)`);
-  chartTitle.font = Font.boldSystemFont(13);
-  chartTitle.textColor = new Color('#1C1C1E');
-
-  chartHeader.addSpacer();
-
+  // 4 宫格
   const daily = data.dailyStats;
-  const chartSub = chartHeader.addText(`今日 ${daily.todayGB}G · 日均 ${daily.avgGB}G · 最高 ${daily.maxGB}G`);
-  chartSub.font = Font.systemFont(11);
-  chartSub.textColor = new Color('#8E8E93');
+  if (daily) {
+    const gridStack = leftCol.addStack();
+    gridStack.layoutHorizontally();
+    gridStack.centerAlignContent();
 
-  widget.addSpacer(8);
+    const items = [
+      { label: '今日已用', val: `${daily.todayGB}G`, color: '#007AFF' },
+      { label: '当月日均', val: `${daily.avgGB}G`, color: '#1C1C1E' },
+      { label: '单日最高', val: `${daily.maxGB}G`, color: '#FF9500' },
+      { label: '当月累计', val: `${daily.monthTotalGB}G`, color: '#1C1C1E' }
+    ];
 
-  // 5. 大尺寸当月用量图表 (1:1 高清对齐)
-  const chartW = 328;
-  const chartH = 130;
-  const chartImg = drawDailyTrafficChart(data.dailyStats, chartW, chartH, CONFIG.chart_type);
-  const chartWidgetImg = widget.addImage(chartImg);
-  chartWidgetImg.imageSize = new Size(chartW, chartH);
-  chartWidgetImg.resizable = false;
+    for (let i = 0; i < items.length; i++) {
+      const col = gridStack.addStack();
+      col.layoutVertically();
+      col.backgroundColor = new Color('#F8F9FA');
+      col.cornerRadius = 8;
+      col.setPadding(6, 8, 6, 8);
 
-  widget.addSpacer(12);
+      const lbl = col.addText(items[i].label);
+      lbl.font = Font.systemFont(9);
+      lbl.textColor = new Color('#8E8E93');
+      lbl.centerAlignText();
 
-  // 6. 底部信息栏
-  const footerStack = widget.addStack();
+      col.addSpacer(2);
+
+      const val = col.addText(items[i].val);
+      val.font = Font.boldSystemFont(12);
+      val.textColor = new Color(items[i].color);
+      val.centerAlignText();
+
+      if (i < items.length - 1) gridStack.addSpacer(6);
+    }
+  }
+
+  leftCol.addSpacer(12);
+
+  const footerStack = leftCol.addStack();
   footerStack.layoutHorizontally();
   footerStack.centerAlignContent();
 
-  const expireText = footerStack.addText(`到期时间: ${data.expireDateStr}`);
+  const expireText = footerStack.addText(`到期: ${data.expireDateStr}`);
   expireText.font = Font.systemFont(10);
   expireText.textColor = new Color('#8E8E93');
-
   footerStack.addSpacer();
-
   renderStatusBadge(footerStack, data, false);
+
+  container.addSpacer(20);
+
+  // 右栏：宽幅超大图表
+  const rightCol = container.addStack();
+  rightCol.layoutVertically();
+
+  const chartTitle = rightCol.addText(`当月每日用量趋势 (${daily ? daily.currentMonth : ''}月)`);
+  chartTitle.font = Font.boldSystemFont(14);
+  chartTitle.textColor = new Color('#1C1C1E');
+
+  rightCol.addSpacer(8);
+
+  if (daily) {
+    const chartW = 340;
+    const chartH = 190;
+    const chartImg = drawDailyTrafficChart(daily, chartW, chartH, CONFIG.chart_type);
+    const chartWidgetImg = rightCol.addImage(chartImg);
+    chartWidgetImg.imageSize = new Size(chartW, chartH);
+    chartWidgetImg.resizable = false;
+  }
+}
+
+// 锁屏矩形小组件 (Accessory Rectangular, iOS 16+)
+function renderAccessoryRectangular(widget, data) {
+  const titleText = widget.addText(data.planName);
+  titleText.font = Font.boldSystemFont(11);
+  titleText.lineLimit = 1;
+
+  widget.addSpacer(2);
+
+  const valStack = widget.addStack();
+  valStack.layoutHorizontally();
+  valStack.bottomAlignContent();
+
+  const remVal = valStack.addText(`剩余 ${data.remainingGB}`);
+  remVal.font = Font.boldSystemFont(15);
+
+  valStack.addSpacer(2);
+
+  const unitText = valStack.addText('GB');
+  unitText.font = Font.systemFont(10);
+
+  widget.addSpacer(2);
+
+  const daily = data.dailyStats;
+  const infoText = widget.addText(daily ? `今日 ${daily.todayGB}G · ${data.resetDaysLeft}天后重置` : `${data.resetDaysLeft}天后重置 · 已用${data.usedPercent}%`);
+  infoText.font = Font.systemFont(9);
+  infoText.lineLimit = 1;
+}
+
+// 锁屏圆形小组件 (Accessory Circular, iOS 16+)
+function renderAccessoryCircular(widget, data) {
+  const centerStack = widget.addStack();
+  centerStack.layoutVertically();
+  centerStack.centerAlignContent();
+
+  const numText = centerStack.addText(data.remainingGB);
+  numText.font = Font.boldSystemFont(12);
+  numText.centerAlignText();
+
+  const unitText = centerStack.addText('GB');
+  unitText.font = Font.systemFont(9);
+  unitText.centerAlignText();
+
+  const resetText = centerStack.addText(`${data.resetDaysLeft}d`);
+  resetText.font = Font.systemFont(8);
+  resetText.centerAlignText();
+}
+
+// 锁屏单行小组件 (Accessory Inline, iOS 16+)
+function renderAccessoryInline(widget, data) {
+  const daily = data.dailyStats;
+  const text = daily ? `剩余 ${data.remainingGB}G · 今日 ${daily.todayGB}G` : `剩余 ${data.remainingGB}GB · ${data.resetDaysLeft}天重置`;
+  const inlineText = widget.addText(text);
+  inlineText.font = Font.systemFont(12);
 }
 
 // 小号小组件 (Small 紧凑视图)
