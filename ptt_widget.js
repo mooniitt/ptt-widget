@@ -7,7 +7,7 @@
 // ================= 配置区域 =================
 const CONFIG = {
   // 脚本版本号
-  version: 'v1.1.0',
+  version: 'v1.2.0',
   // 订阅 API 地址
   api_url: 'https://ptt.ixlmo.com/api/v1/user/getSubscribe',
   // 每日流量统计 API 地址
@@ -613,19 +613,19 @@ function renderMediumWidget(widget, data) {
   widget.addSpacer(6);
 
   // 3. 核心图表区域 (1:1 点对点高清晰度渲染)
-  if (data.dailyStats) {
+  if (data.dailyStats && data.dailyStats.days && data.dailyStats.days.length > 0) {
     const chartW = 316;
     const chartH = 64;
     const chartImg = drawDailyTrafficChart(data.dailyStats, chartW, chartH, CONFIG.chart_type);
     const chartWidgetImg = widget.addImage(chartImg);
     chartWidgetImg.imageSize = new Size(chartW, chartH);
-    chartWidgetImg.resizable = false;
+    chartWidgetImg.resizable = true;
   } else {
     // 降级使用普通进度条
     const progressImg = drawProgressBar(data.usedPercent, 316, 10);
     const progressWidgetImg = widget.addImage(progressImg);
     progressWidgetImg.imageSize = new Size(316, 10);
-    progressWidgetImg.resizable = false;
+    progressWidgetImg.resizable = true;
   }
 
   widget.addSpacer(6);
@@ -666,14 +666,14 @@ function renderLargeWidget(widget, data) {
   resetText.font = Font.systemFont(11);
   resetText.textColor = new Color('#007AFF');
 
-  widget.addSpacer(10);
+  widget.addSpacer(8);
 
   // 2. 核心资产与进度卡片 (Hero Card)
   const heroCard = widget.addStack();
   heroCard.layoutVertically();
   heroCard.backgroundColor = new Color('#F8F9FA');
   heroCard.cornerRadius = 10;
-  heroCard.setPadding(10, 12, 10, 12);
+  heroCard.setPadding(8, 12, 8, 12);
 
   const heroTop = heroCard.addStack();
   heroTop.layoutHorizontally();
@@ -694,7 +694,7 @@ function renderLargeWidget(widget, data) {
   valStack.bottomAlignContent();
 
   const remVal = valStack.addText(data.remainingGB);
-  remVal.font = Font.boldSystemFont(28);
+  remVal.font = Font.boldSystemFont(26);
   remVal.textColor = new Color('#10B981');
 
   valStack.addSpacer(3);
@@ -719,15 +719,15 @@ function renderLargeWidget(widget, data) {
   usedText.font = Font.systemFont(11);
   usedText.textColor = new Color('#8E8E93');
 
-  heroCard.addSpacer(8);
+  heroCard.addSpacer(6);
 
   // 进度条
-  const progressImg = drawProgressBar(data.usedPercent, 296, 7);
+  const progressImg = drawProgressBar(data.usedPercent, 296, 6);
   const progressWidgetImg = heroCard.addImage(progressImg);
-  progressWidgetImg.imageSize = new Size(296, 7);
-  progressWidgetImg.resizable = false;
+  progressWidgetImg.imageSize = new Size(296, 6);
+  progressWidgetImg.resizable = true;
 
-  widget.addSpacer(10);
+  widget.addSpacer(8);
 
   // 3. 四宫格核心数据指标胶囊 (KPI 4-Grid)
   const daily = data.dailyStats;
@@ -748,7 +748,7 @@ function renderLargeWidget(widget, data) {
       col.layoutVertically();
       col.backgroundColor = new Color('#F8F9FA');
       col.cornerRadius = 8;
-      col.setPadding(6, 6, 6, 6);
+      col.setPadding(5, 6, 5, 6);
 
       const lbl = col.addText(items[i].label);
       lbl.font = Font.systemFont(9);
@@ -767,14 +767,11 @@ function renderLargeWidget(widget, data) {
       }
     }
 
-    widget.addSpacer(10);
+    widget.addSpacer(8);
   }
 
   // 4. 当月每日用量全景大图表 (Full Chart Section)
-  const chartCard = widget.addStack();
-  chartCard.layoutVertically();
-
-  const chartHeader = chartCard.addStack();
+  const chartHeader = widget.addStack();
   chartHeader.layoutHorizontally();
   chartHeader.centerAlignContent();
 
@@ -788,19 +785,25 @@ function renderLargeWidget(widget, data) {
   chartSub.font = Font.systemFont(10);
   chartSub.textColor = new Color('#8E8E93');
 
-  chartCard.addSpacer(6);
+  widget.addSpacer(4);
 
-  // 1:1 大尺寸高清图表 (宽 316, 高 100)
-  if (data.dailyStats) {
-    const chartW = 316;
-    const chartH = 100;
+  // 1:1 大尺寸高清图表 (宽 316, 高 90) - 直接挂在 widget，确保顶级约束
+  const chartW = 316;
+  const chartH = 90;
+  if (data.dailyStats && data.dailyStats.days && data.dailyStats.days.length > 0) {
     const chartImg = drawDailyTrafficChart(data.dailyStats, chartW, chartH, CONFIG.chart_type);
-    const chartWidgetImg = chartCard.addImage(chartImg);
+    const chartWidgetImg = widget.addImage(chartImg);
     chartWidgetImg.imageSize = new Size(chartW, chartH);
-    chartWidgetImg.resizable = false;
+    chartWidgetImg.resizable = true;
+  } else {
+    // 容错降级
+    const progressImg = drawProgressBar(data.usedPercent, chartW, 10);
+    const progressWidgetImg = widget.addImage(progressImg);
+    progressWidgetImg.imageSize = new Size(chartW, 10);
+    progressWidgetImg.resizable = true;
   }
 
-  widget.addSpacer(8);
+  widget.addSpacer(6);
 
   // 5. 底部状态栏
   const footerStack = widget.addStack();
@@ -882,7 +885,7 @@ function renderExtraLargeWidget(widget, data) {
   const progressImg = drawProgressBar(data.usedPercent, 310, 8);
   const progressWidgetImg = heroCard.addImage(progressImg);
   progressWidgetImg.imageSize = new Size(310, 8);
-  progressWidgetImg.resizable = false;
+  progressWidgetImg.resizable = true;
 
   leftCol.addSpacer(12);
 
@@ -953,7 +956,7 @@ function renderExtraLargeWidget(widget, data) {
     const chartImg = drawDailyTrafficChart(daily, chartW, chartH, CONFIG.chart_type);
     const chartWidgetImg = rightCol.addImage(chartImg);
     chartWidgetImg.imageSize = new Size(chartW, chartH);
-    chartWidgetImg.resizable = false;
+    chartWidgetImg.resizable = true;
   }
 }
 
