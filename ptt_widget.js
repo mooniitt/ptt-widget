@@ -539,19 +539,12 @@ function drawDailyLineChart(dailyStats, width = 316, height = 64) {
   return dc.getImage();
 }
 
-// 渲染右下角版本号与刷新状态/时间
+// 渲染右下角刷新状态与时间
 function renderStatusBadge(stack, data, isSmall = false) {
   const statusStack = stack.addStack();
   statusStack.layoutHorizontally();
   statusStack.centerAlignContent();
   statusStack.spacing = 3;
-
-  if (CONFIG.version) {
-    const verText = statusStack.addText(CONFIG.version);
-    verText.font = Font.systemFont(isSmall ? 8 : 9);
-    verText.textColor = new Color('#8E8E93');
-    statusStack.addSpacer(1);
-  }
 
   try {
     const symbol = SFSymbol.named('arrow.triangle.2.circlepath');
@@ -1104,15 +1097,6 @@ function renderErrorWidget(widget, message = '服务不可用') {
   descText.textColor = new Color('#8E8E93');
   descText.centerAlignText();
   widget.addSpacer();
-
-  if (CONFIG.version) {
-    const footerStack = widget.addStack();
-    footerStack.layoutHorizontally();
-    footerStack.addSpacer();
-    const verText = footerStack.addText(CONFIG.version);
-    verText.font = Font.systemFont(9);
-    verText.textColor = new Color('#8E8E93', 0.6);
-  }
 }
 
 // 执行渲染
