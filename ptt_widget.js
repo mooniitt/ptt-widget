@@ -431,16 +431,16 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     '#216E39'  // Level 4: 深绿 (75~100%)
   ];
 
-  const isLarge = height > 90;
+  const isLarge = height >= 118;
   const isCompact = width < 260; // 窄屏模式下仅显示左侧热力图
 
   // 1. 布局参数计算
   const totalWeeks = Math.ceil((firstDayOfWeek + daysInMonth) / 7);
   const gap = isLarge ? 3 : 2;
   const topH = isLarge ? 16 : 13;
-  const bottomH = isLarge ? 16 : 12;
+  const bottomH = isLarge ? 8 : 6;
   const availableGridH = height - topH - bottomH;
-  const cellSize = Math.min(isLarge ? 9.5 : 6.8, Math.floor((availableGridH - 6 * gap) / 7));
+  const cellSize = Math.min(isLarge ? 10 : 7.2, Math.floor((availableGridH - 6 * gap) / 7));
   const gridH = 7 * cellSize + 6 * gap;
   const gridY = Math.round(topH + (availableGridH - gridH) / 2);
 
@@ -514,33 +514,6 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     dc.strokePath();
   }
 
-  // 6. 绘制底部经典图例 (Less ▫️ 🟩 🟩 🟩 🟩 More)
-  const legendY = gridY + gridH + 2;
-  const legBoxSize = Math.max(4.5, cellSize - 1.5);
-  const legGap = 2;
-  const legFontSize = isLarge ? 8 : 6.5;
-
-  dc.setFont(Font.systemFont(legFontSize));
-  dc.setTextColor(new Color('#8E8E93'));
-  dc.setTextAlignedLeft();
-
-  const lessW = isLarge ? 22 : 18;
-  const legStartX = gridStartX;
-  dc.drawTextInRect('Less', new Rect(legStartX, legendY, lessW, bottomH));
-
-  let boxX = legStartX + lessW + 2;
-  for (let lvl = 0; lvl <= 4; lvl++) {
-    const lPath = new Path();
-    lPath.addRoundedRect(new Rect(boxX, legendY + 1, legBoxSize, legBoxSize), 1, 1);
-    dc.addPath(lPath);
-    dc.setFillColor(new Color(LEVEL_COLORS[lvl]));
-    dc.fillPath();
-    boxX += legBoxSize + legGap;
-  }
-
-  boxX += 1;
-  const moreW = isLarge ? 24 : 20;
-  dc.drawTextInRect('More', new Rect(boxX, legendY, moreW, bottomH));
 
   // 7. 若空间充足，在右侧绘制当月数据指标看板 (2x2 卡片矩阵)
   if (!isCompact && width >= 260) {
@@ -549,22 +522,18 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     const rightAvailW = width - rightStartX - 2;
 
     // 绘制轻量垂直分割线
+    const cardsMarginY = isLarge ? 8 : 6;
     const sepPath = new Path();
-    sepPath.move(new Point(splitX, 8));
-    sepPath.addLine(new Point(splitX, height - 8));
+    sepPath.move(new Point(splitX, cardsMarginY));
+    sepPath.addLine(new Point(splitX, height - cardsMarginY));
     dc.addPath(sepPath);
     dc.setStrokeColor(new Color('#E5E5EA', 0.8));
     dc.setLineWidth(1);
     dc.strokePath();
 
-    // 右侧指标项：根据小组件大小合理搭配
+    // 右侧指标项：今日已用、本月累计、单日最高、剩余流量
     const remStr = `${remainingGB !== undefined ? remainingGB : 0} GB`;
-    const cards = isLarge ? [
-      { label: '剩余流量', val: remStr, color: '#10B981' },
-      { label: '日均用量', val: `${avgGB} GB`, color: '#007AFF' },
-      { label: '最高用量', val: `${maxGB} GB`, color: '#FF9500' },
-      { label: '活跃天数', val: `${activeDays}/${todayDate} 天`, color: '#30A14E' }
-    ] : [
+    const cards = [
       { label: '今日已用', val: `${todayGB} GB`, color: '#007AFF' },
       { label: '本月累计', val: `${monthTotalGB} GB`, color: '#1C1C1E' },
       { label: '单日最高', val: `${maxGB} GB`, color: '#FF9500' },
@@ -572,34 +541,40 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     ];
 
     const cardGapX = 6;
-    const cardGapY = isLarge ? 8 : 4;
+    const cardGapY = isLarge ? 8 : 6;
+    const availCardsH = height - cardsMarginY * 2;
     const cardW = Math.floor((rightAvailW - cardGapX) / 2);
-    const cardH = Math.floor((height - 10 - cardGapY) / 2);
+    const cardH = Math.floor((availCardsH - cardGapY) / 2);
 
     for (let i = 0; i < cards.length; i++) {
       const col = i % 2;
       const row = Math.floor(i / 2);
       const cx = rightStartX + col * (cardW + cardGapX);
-      const cy = 5 + row * (cardH + cardGapY);
+      const cy = cardsMarginY + row * (cardH + cardGapY);
 
       // 卡片圆角微背景
       const cardPath = new Path();
-      cardPath.addRoundedRect(new Rect(cx, cy, cardW, cardH), 5, 5);
+      cardPath.addRoundedRect(new Rect(cx, cy, cardW, cardH), 6, 6);
       dc.addPath(cardPath);
       dc.setFillColor(new Color('#F8F9FA'));
       dc.fillPath();
 
-      // 卡片标签
+      // 卡片内边距
+      const innerPaddingX = 7;
+      const innerPaddingY = isLarge ? 6 : 5;
+
+      // 卡片标签 (上方留白充足)
       dc.setFont(Font.systemFont(isLarge ? 9 : 8));
       dc.setTextColor(new Color('#8E8E93'));
       dc.setTextAlignedLeft();
-      dc.drawTextInRect(cards[i].label, new Rect(cx + 6, cy + 3, cardW - 10, 11));
+      dc.drawTextInRect(cards[i].label, new Rect(cx + innerPaddingX, cy + innerPaddingY, cardW - innerPaddingX * 2, 12));
 
-      // 卡片数值
-      dc.setFont(Font.boldSystemFont(isLarge ? 12 : 10.5));
+      // 卡片数值 (底部留白舒适)
+      dc.setFont(Font.boldSystemFont(isLarge ? 12.5 : 11));
       dc.setTextColor(new Color(cards[i].color));
       dc.setTextAlignedLeft();
-      dc.drawTextInRect(cards[i].val, new Rect(cx + 6, cy + cardH - (isLarge ? 16 : 14), cardW - 10, 14));
+      const valH = isLarge ? 16 : 14;
+      dc.drawTextInRect(cards[i].val, new Rect(cx + innerPaddingX, cy + cardH - innerPaddingY - valH, cardW - innerPaddingX * 2, valH));
     }
   }
 
