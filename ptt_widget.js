@@ -118,13 +118,32 @@ async function fetchData() {
     }
 
     if (subData) {
+      // 合并历史日志列表，防止跨月或服务端只返回当月时丢失周期前期明细
+      let mergedLogs = Array.isArray(logData) ? [...logData] : [];
+      try {
+        if (fm.fileExists(cachePath)) {
+          const oldCache = JSON.parse(fm.readString(cachePath));
+          if (oldCache && Array.isArray(oldCache.allLogs)) {
+            const existingMap = new Map();
+            oldCache.allLogs.forEach(item => {
+              if (item && item.record_at) existingMap.set(item.record_at, item);
+            });
+            mergedLogs.forEach(item => {
+              if (item && item.record_at) existingMap.set(item.record_at, item);
+            });
+            mergedLogs = Array.from(existingMap.values());
+          }
+        }
+      } catch (e) {}
+
       const cacheObj = {
         subData,
         logData: logData || null,
+        allLogs: mergedLogs,
         cachedAt: Date.now()
       };
       fm.writeString(cachePath, JSON.stringify(cacheObj));
-      const parsed = parseTrafficData(subData, logData);
+      const parsed = parseTrafficData(subData, mergedLogs);
       if (parsed) parsed.isFromCache = false;
       return parsed;
     }
@@ -139,7 +158,7 @@ async function fetchData() {
       const cached = JSON.parse(cacheStr);
       if (cached) {
         const sData = cached.subData || cached;
-        const lData = cached.logData || null;
+        const lData = cached.allLogs || cached.logData || null;
         const parsed = parseTrafficData(sData, lData);
         if (parsed) {
           parsed.isFromCache = true;
@@ -186,8 +205,8 @@ function parseTrafficData(subInfo, logList) {
     expireDateStr = `${y}-${m}-${day}`;
   }
 
-  // 解析当月每日用量统计
-  const dailyStats = parseDailyStats(logList);
+  // 解析套餐实际计费周期与每日用量统计
+  const dailyStats = parseDailyStats(logList, subInfo);
   if (dailyStats) {
     dailyStats.remainingGB = remainingGB;
   }
@@ -208,72 +227,120 @@ function parseTrafficData(subInfo, logList) {
   };
 }
 
-// 解析当月每日使用额度与整月热力图数据
-function parseDailyStats(logList) {
+// 解析套餐实际计费周期与每日使用额度数据
+function parseDailyStats(logList, subInfo) {
   const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth(); // 0-11
-  const todayDate = now.getDate();
   const GB = 1024 * 1024 * 1024;
+  const totalUsedBytes = (Number(subInfo && subInfo.u) || 0) + (Number(subInfo && subInfo.d) || 0);
 
-  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const firstDayOfWeek = new Date(currentYear, currentMonth, 1).getDay(); // 0(周日) - 6(周六)
-  const monthNames = ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'];
-  const monthNamesEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const monthName = monthNamesEn[currentMonth];
+  // 1. 确定计费周期起止时间（以套餐实际重置日期为准）
+  let startDate, endDate;
+  if (subInfo && subInfo.next_reset_at) {
+    endDate = new Date(Number(subInfo.next_reset_at) * 1000);
+    startDate = new Date(endDate);
+    startDate.setMonth(startDate.getMonth() - 1);
+    while (startDate > now) {
+      endDate = new Date(startDate);
+      startDate.setMonth(startDate.getMonth() - 1);
+    }
+  } else {
+    // 降级为当前自然月
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  }
 
-  const dayMap = {};
+  // 周期标签与范围描述（如 "08/26 - 09/26"）
+  const startM = String(startDate.getMonth() + 1).padStart(2, '0');
+  const startD = String(startDate.getDate()).padStart(2, '0');
+  const endM = String(endDate.getMonth() + 1).padStart(2, '0');
+  const endD = String(endDate.getDate()).padStart(2, '0');
+  const cycleRangeLabel = `${startM}/${startD} - ${endM}/${endD}`;
+  const monthName = `${startDate.getMonth() + 1}月`;
+
+  // 2. 映射每日流量明细日志
+  const logMap = {};
+  let logSumBytes = 0;
   if (Array.isArray(logList)) {
     for (const item of logList) {
       if (!item || !item.record_at) continue;
       const d = new Date(item.record_at * 1000);
-      if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
-        const day = d.getDate();
-        const bytes = (Number(item.u) || 0) + (Number(item.d) || 0);
-        dayMap[day] = (dayMap[day] || 0) + bytes;
-      }
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const bytes = (Number(item.u) || 0) + (Number(item.d) || 0);
+      logMap[key] = (logMap[key] || 0) + bytes;
+      logSumBytes += bytes;
     }
   }
 
+  // 3. 构建周期内全部天数序列（从 startDate 到 endDate 前一天）
   const days = [];
-  let monthTotalBytes = 0;
+  let cur = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const endDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  const missingPastDays = [];
+  let pastDaysCount = 0;
+
+  while (cur < endDay) {
+    const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+    const isToday = (key === todayKey);
+    const isFuture = (cur > now && !isToday);
+
+    if (!isFuture) {
+      pastDaysCount++;
+      if (logMap[key] === undefined) {
+        missingPastDays.push(key);
+      }
+    }
+
+    days.push({
+      dateObj: new Date(cur),
+      key,
+      day: cur.getDate(),
+      month: cur.getMonth() + 1,
+      dateLabel: `${cur.getDate()}`,
+      isToday,
+      isFuture
+    });
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  // 4. 周期用量对齐：将总已用与日志累加进行精准对齐与平摊补偿
+  // 当服务端仅返回当月导致周期前期历史天数缺失时，平摊差额，确保周期总累计和套餐已用 100% 吻合
+  const diffBytes = Math.max(0, totalUsedBytes - logSumBytes);
+  const fillBytesPerDay = missingPastDays.length > 0 ? Math.round(diffBytes / missingPastDays.length) : 0;
+
   let maxBytes = 0;
-  let maxDay = todayDate;
+  let maxDay = now.getDate();
   let todayBytes = 0;
   let activeDays = 0;
 
-  for (let d = 1; d <= daysInMonth; d++) {
-    const isFuture = d > todayDate;
-    const bytes = isFuture ? 0 : (dayMap[d] || 0);
-    const gb = bytes / GB;
-    if (!isFuture) {
-      monthTotalBytes += bytes;
+  for (const item of days) {
+    let bytes = 0;
+    if (!item.isFuture) {
+      if (logMap[item.key] !== undefined) {
+        bytes = logMap[item.key];
+      } else {
+        bytes = fillBytesPerDay;
+      }
       if (bytes > 0) activeDays++;
       if (bytes > maxBytes) {
         maxBytes = bytes;
-        maxDay = d;
+        maxDay = item.day;
       }
-      if (d === todayDate) {
+      if (item.isToday) {
         todayBytes = bytes;
       }
     }
-    days.push({
-      day: d,
-      dateLabel: `${d}`,
-      bytes,
-      gb: Number(gb.toFixed(2)),
-      isToday: d === todayDate,
-      isFuture
-    });
+    item.bytes = bytes;
+    item.gb = Number((bytes / GB).toFixed(2));
   }
 
-  const avgBytes = todayDate > 0 ? (monthTotalBytes / todayDate) : 0;
-  const avgGB = Number((avgBytes / GB).toFixed(2));
+  const finalCycleTotalGB = Number((totalUsedBytes / GB).toFixed(2));
+  const avgGB = pastDaysCount > 0 ? Number((totalUsedBytes / GB / pastDaysCount).toFixed(2)) : 0;
   const maxGB = Number((maxBytes / GB).toFixed(2));
   const todayGB = Number((todayBytes / GB).toFixed(2));
-  const monthTotalGB = Number((monthTotalBytes / GB).toFixed(2));
 
-  // 为每天分配 GitHub 贡献热力图颜色阶梯 (0: 无用量/未来, 1: 浅绿, 2: 中浅绿, 3: 中深绿, 4: 深绿)
+  // 5. 热力图色阶计算 (0: 无用量/未来, 1: 浅绿, 2: 中浅绿, 3: 中深绿, 4: 深绿)
   for (const item of days) {
     if (item.isFuture || item.gb === 0) {
       item.level = 0;
@@ -288,16 +355,18 @@ function parseDailyStats(logList) {
     }
   }
 
+  const firstDayOfWeek = days.length > 0 ? days[0].dateObj.getDay() : 0;
+
   return {
     days,
-    currentYear,
-    currentMonth: currentMonth + 1,
+    cycleRangeLabel,
     monthName,
-    todayDate,
-    daysInMonth,
+    todayDate: now.getDate(),
+    daysInCycle: days.length,
     firstDayOfWeek,
     activeDays,
-    monthTotalGB,
+    cycleTotalGB: finalCycleTotalGB,
+    monthTotalGB: finalCycleTotalGB, // 兼容老字段
     avgGB,
     maxGB,
     maxDay,
@@ -410,12 +479,14 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
   const {
     days,
     monthName,
+    cycleRangeLabel,
     firstDayOfWeek,
-    daysInMonth,
+    daysInCycle,
     todayDate,
     activeDays,
     todayGB,
     monthTotalGB,
+    cycleTotalGB,
     maxGB,
     avgGB,
     maxDay,
@@ -435,8 +506,9 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
   const isCompact = width < 260; // 窄屏模式下仅显示左侧热力图
 
   // 1. 布局参数计算 (星期横轴化：7列星期 × 5~6周行，网格方块显著放大)
+  const totalDays = (days && days.length > 0) ? days.length : (daysInCycle || 31);
   const firstDayCol = (firstDayOfWeek + 6) % 7; // 周一为0，周日为6
-  const totalRows = Math.ceil((firstDayCol + daysInMonth) / 7);
+  const totalRows = Math.ceil((firstDayCol + totalDays) / 7);
   const weekHeaders = ['一', '二', '三', '四', '五', '六', '日'];
 
   const topH = 14;
@@ -453,11 +525,11 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
   const weekHeaderY = topH + 2;
   const gridY = weekHeaderY + weekHeaderH + 2;
 
-  // 2. 绘制顶部月份标签 (如 "Sep")
-  dc.setFont(Font.boldSystemFont(isLarge ? 11 : 10));
+  // 2. 绘制顶部周期标签 (如 "08/26 - 09/26")
+  dc.setFont(Font.boldSystemFont(isLarge ? 9.5 : 8.5));
   dc.setTextColor(new Color('#24292F'));
   dc.setTextAlignedLeft();
-  dc.drawTextInRect(monthName || '当月', new Rect(gridStartX, 0, gridW, topH));
+  dc.drawTextInRect(cycleRangeLabel || monthName || '周期用量', new Rect(gridStartX, 0, gridW + 20, topH));
 
   // 3. 绘制顶部横轴星期标尺 (对齐 一 至 日)
   dc.setFont(Font.systemFont(isLarge ? 8.5 : 7.5));
@@ -468,15 +540,15 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     dc.drawTextInRect(weekHeaders[c], new Rect(wx, weekHeaderY, cellSize, weekHeaderH));
   }
 
-  // 4. 循环绘制整月圆角方块 (按自然月历排布)
+  // 4. 循环绘制整周期圆角方块 (按自然周历排布)
   const cornerRadius = Math.max(2, Math.floor(cellSize * 0.22));
   let todayRect = null;
 
-  for (let d = 1; d <= daysInMonth; d++) {
-    const item = days[d - 1];
+  for (let i = 0; i < totalDays; i++) {
+    const item = days[i];
     if (!item) continue;
 
-    const dayIdx = firstDayCol + (d - 1);
+    const dayIdx = firstDayCol + i;
     const col = dayIdx % 7;
     const row = Math.floor(dayIdx / 7);
     const x = gridStartX + col * (cellSize + gap);
@@ -528,11 +600,11 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     dc.setLineWidth(1);
     dc.strokePath();
 
-    // 右侧指标项：今日已用、本月累计、单日最高、剩余流量
+    // 右侧指标项：今日已用、周期累计、单日最高、剩余流量
     const remStr = `${remainingGB !== undefined ? remainingGB : 0} GB`;
     const cards = [
       { label: '今日已用', val: `${todayGB} GB`, color: '#007AFF' },
-      { label: '本月累计', val: `${monthTotalGB} GB`, color: '#1C1C1E' },
+      { label: '周期累计', val: `${cycleTotalGB || monthTotalGB} GB`, color: '#1C1C1E' },
       { label: '单日最高', val: `${maxGB} GB`, color: '#FF9500' },
       { label: '剩余流量', val: remStr, color: '#10B981' }
     ];
@@ -1006,7 +1078,7 @@ function renderLargeWidget(widget, data) {
       { label: '今日已用', val: `${daily.todayGB} G`, color: '#007AFF' },
       { label: '剩余天数', val: `${data.resetDaysLeft} 天`, color: '#1C1C1E' },
       { label: '单日峰值', val: `${daily.maxGB} G`, color: '#FF9500' },
-      { label: '当月累计', val: `${daily.monthTotalGB} G`, color: '#1C1C1E' }
+      { label: '周期累计', val: `${daily.cycleTotalGB || daily.monthTotalGB} G`, color: '#1C1C1E' }
     ];
 
     for (let i = 0; i < items.length; i++) {
@@ -1041,7 +1113,8 @@ function renderLargeWidget(widget, data) {
   chartHeader.layoutHorizontally();
   chartHeader.centerAlignContent();
 
-  const chartTitle = chartHeader.addText(`当月每日用量 (${daily ? daily.currentMonth : ''}月)`);
+  const cycleTitle = daily && daily.cycleRangeLabel ? ` (${daily.cycleRangeLabel})` : '';
+  const chartTitle = chartHeader.addText(`周期每日用量${cycleTitle}`);
   chartTitle.font = Font.boldSystemFont(12);
   chartTitle.textColor = new Color('#1C1C1E');
 
@@ -1166,7 +1239,7 @@ function renderExtraLargeWidget(widget, data) {
       { label: '今日已用', val: `${daily.todayGB}G`, color: '#007AFF' },
       { label: '剩余天数', val: `${data.resetDaysLeft}天`, color: '#1C1C1E' },
       { label: '单日最高', val: `${daily.maxGB}G`, color: '#FF9500' },
-      { label: '当月累计', val: `${daily.monthTotalGB}G`, color: '#1C1C1E' }
+      { label: '周期累计', val: `${daily.cycleTotalGB || daily.monthTotalGB}G`, color: '#1C1C1E' }
     ];
 
     for (let i = 0; i < items.length; i++) {
@@ -1210,7 +1283,8 @@ function renderExtraLargeWidget(widget, data) {
   const rightCol = container.addStack();
   rightCol.layoutVertically();
 
-  const chartTitle = rightCol.addText(`当月每日用量趋势 (${daily ? daily.currentMonth : ''}月)`);
+  const xlCycleTitle = daily && daily.cycleRangeLabel ? ` (${daily.cycleRangeLabel})` : '';
+  const chartTitle = rightCol.addText(`周期每日用量趋势${xlCycleTitle}`);
   chartTitle.font = Font.boldSystemFont(14);
   chartTitle.textColor = new Color('#1C1C1E');
 
@@ -1325,7 +1399,7 @@ function renderSmallWidget(widget, data) {
   // 紧凑每日用量信息
   const daily = data.dailyStats;
   if (daily) {
-    const dailyText = widget.addText(`今日 ${daily.todayGB}G · 日均 ${daily.avgGB}G`);
+    const dailyText = widget.addText(`今日 ${daily.todayGB}G · 周期日均 ${daily.avgGB}G`);
     dailyText.font = Font.systemFont(9);
     dailyText.textColor = new Color('#8E8E93');
   } else {
