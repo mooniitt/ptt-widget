@@ -188,6 +188,9 @@ function parseTrafficData(subInfo, logList) {
 
   // 解析当月每日用量统计
   const dailyStats = parseDailyStats(logList);
+  if (dailyStats) {
+    dailyStats.remainingGB = remainingGB;
+  }
 
   return {
     planName: (subInfo.plan && subInfo.plan.name) ? subInfo.plan.name.replace(/^[^\w\u4e00-\u9fa5]+/, '').trim() : '流量套餐',
@@ -361,6 +364,27 @@ function getWidgetChartWidth(family = 'medium') {
   return 328;
 }
 
+// 获取小组件内容区图表高度 (自适应设备，Medium 尺寸由原 78pt 提升至 108~114pt，扩大近 50%)
+function getWidgetChartHeight(family = 'medium') {
+  let screenW = 390;
+  try {
+    if (typeof Device !== 'undefined' && Device.screenSize) {
+      screenW = Device.screenSize().width;
+    }
+  } catch (e) {
+    screenW = 390;
+  }
+  if (family === 'medium') {
+    if (screenW >= 428) return 114; // Pro Max, Plus
+    if (screenW >= 390) return 108; // 6.1寸标准机型
+    return 98; // mini / SE
+  }
+  if (family === 'large') {
+    return 120;
+  }
+  return 108;
+}
+
 // 绘制每日用量图表 (分发热力图、柱状图与折线图)
 function drawDailyTrafficChart(dailyStats, width = 328, height = 64, type = CONFIG.chart_type) {
   if (type === 'heatmap') {
@@ -394,7 +418,8 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     monthTotalGB,
     maxGB,
     avgGB,
-    maxDay
+    maxDay,
+    remainingGB
   } = dailyStats;
 
   // GitHub 官方贡献色阶 (0: 微灰无用量/未来, 1~4: 浅绿到深绿)
@@ -533,16 +558,17 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     dc.strokePath();
 
     // 右侧指标项：根据小组件大小合理搭配
+    const remStr = `${remainingGB !== undefined ? remainingGB : 0} GB`;
     const cards = isLarge ? [
+      { label: '剩余流量', val: remStr, color: '#10B981' },
       { label: '日均用量', val: `${avgGB} GB`, color: '#007AFF' },
-      { label: '活跃天数', val: `${activeDays}/${todayDate} 天`, color: '#30A14E' },
       { label: '最高用量', val: `${maxGB} GB`, color: '#FF9500' },
-      { label: '峰值日期', val: `${maxDay} 日`, color: '#1C1C1E' }
+      { label: '活跃天数', val: `${activeDays}/${todayDate} 天`, color: '#30A14E' }
     ] : [
       { label: '今日已用', val: `${todayGB} GB`, color: '#007AFF' },
       { label: '本月累计', val: `${monthTotalGB} GB`, color: '#1C1C1E' },
       { label: '单日最高', val: `${maxGB} GB`, color: '#FF9500' },
-      { label: '活跃天数', val: `${activeDays}/${todayDate} 天`, color: '#30A14E' }
+      { label: '剩余流量', val: remStr, color: '#10B981' }
     ];
 
     const cardGapX = 6;
@@ -877,38 +903,19 @@ function renderMediumWidget(widget, data) {
 
   widget.addSpacer(6);
 
-  // 2. 关键指标快速概览行
-  const metaStack = widget.addStack();
-  metaStack.layoutHorizontally();
-  metaStack.centerAlignContent();
-
-  // 左侧：已用进度
-  const usedRatioText = metaStack.addText(`已用 ${data.usedPercent}%`);
-  usedRatioText.font = Font.mediumSystemFont(11);
-  usedRatioText.textColor = new Color('#1C1C1E');
-
-  metaStack.addSpacer();
-
-  // 右侧：剩余流量大字（去掉"剩余"标签，直接显示数值）
-  const remVal = metaStack.addText(`${data.remainingGB} GB`);
-  remVal.font = Font.boldSystemFont(15);
-  remVal.textColor = new Color('#10B981');
-
-  widget.addSpacer(6);
-
-  // 3. 核心图表区域 (1:1 点对点高清晰度渲染，100% 自适应满宽)
+  // 2. 核心图表区域 (1:1 点对点高清晰度渲染，空间扩大近 50%)
   const chartW = getWidgetChartWidth('medium');
+  const chartH = getWidgetChartHeight('medium');
   if (data.dailyStats && data.dailyStats.days && data.dailyStats.days.length > 0) {
-    const chartH = 78;
     const chartImg = drawDailyTrafficChart(data.dailyStats, chartW, chartH, CONFIG.chart_type);
     const chartWidgetImg = widget.addImage(chartImg);
     chartWidgetImg.imageSize = new Size(chartW, chartH);
     chartWidgetImg.resizable = true;
   } else {
     // 降级使用普通进度条
-    const progressImg = drawProgressBar(data.usedPercent, chartW, 10);
+    const progressImg = drawProgressBar(data.usedPercent, chartW, 12);
     const progressWidgetImg = widget.addImage(progressImg);
-    progressWidgetImg.imageSize = new Size(chartW, 10);
+    progressWidgetImg.imageSize = new Size(chartW, 12);
     progressWidgetImg.resizable = true;
   }
 
