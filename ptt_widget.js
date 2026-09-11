@@ -12,8 +12,8 @@ const CONFIG = {
   api_url: 'https://ptt.ixlmo.com/api/v1/user/getSubscribe',
   // 每日流量统计 API 地址
   stat_api_url: 'https://ptt.ixlmo.com/api/v1/user/stat/getTrafficLog',
-  // 默认图表显示类型: 'bar' (柱状图) 或 'line' (折线面积图)
-  chart_type: 'bar',
+  // 默认图表显示类型: 'heatmap' (GitHub 贡献热力图), 'bar' (柱状图) 或 'line' (折线面积图)
+  chart_type: 'heatmap',
   // 从 Loader 注入的全局变量或小组件参数中读取 Token
   token: globalThis.__LOCAL_TRAFFIC_TOKEN__ || (args.widgetParameter && args.widgetParameter.trim()) || '',
   // 刷新间隔（秒）
@@ -205,13 +205,19 @@ function parseTrafficData(subInfo, logList) {
   };
 }
 
-// 解析当月从 1 号到今日的每日使用额度
+// 解析当月每日使用额度与整月热力图数据
 function parseDailyStats(logList) {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth(); // 0-11
   const todayDate = now.getDate();
   const GB = 1024 * 1024 * 1024;
+
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const firstDayOfWeek = new Date(currentYear, currentMonth, 1).getDay(); // 0(周日) - 6(周六)
+  const monthNames = ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'];
+  const monthNamesEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthName = monthNamesEn[currentMonth];
 
   const dayMap = {};
   if (Array.isArray(logList)) {
@@ -231,24 +237,30 @@ function parseDailyStats(logList) {
   let maxBytes = 0;
   let maxDay = todayDate;
   let todayBytes = 0;
+  let activeDays = 0;
 
-  for (let d = 1; d <= todayDate; d++) {
-    const bytes = dayMap[d] || 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isFuture = d > todayDate;
+    const bytes = isFuture ? 0 : (dayMap[d] || 0);
     const gb = bytes / GB;
-    monthTotalBytes += bytes;
-    if (bytes > maxBytes) {
-      maxBytes = bytes;
-      maxDay = d;
-    }
-    if (d === todayDate) {
-      todayBytes = bytes;
+    if (!isFuture) {
+      monthTotalBytes += bytes;
+      if (bytes > 0) activeDays++;
+      if (bytes > maxBytes) {
+        maxBytes = bytes;
+        maxDay = d;
+      }
+      if (d === todayDate) {
+        todayBytes = bytes;
+      }
     }
     days.push({
       day: d,
       dateLabel: `${d}`,
       bytes,
       gb: Number(gb.toFixed(2)),
-      isToday: d === todayDate
+      isToday: d === todayDate,
+      isFuture
     });
   }
 
@@ -258,10 +270,30 @@ function parseDailyStats(logList) {
   const todayGB = Number((todayBytes / GB).toFixed(2));
   const monthTotalGB = Number((monthTotalBytes / GB).toFixed(2));
 
+  // 为每天分配 GitHub 贡献热力图颜色阶梯 (0: 无用量/未来, 1: 浅绿, 2: 中浅绿, 3: 中深绿, 4: 深绿)
+  for (const item of days) {
+    if (item.isFuture || item.gb === 0) {
+      item.level = 0;
+    } else if (maxGB <= 0) {
+      item.level = 1;
+    } else {
+      const ratio = item.gb / maxGB;
+      if (ratio <= 0.25) item.level = 1;
+      else if (ratio <= 0.50) item.level = 2;
+      else if (ratio <= 0.75) item.level = 3;
+      else item.level = 4;
+    }
+  }
+
   return {
     days,
+    currentYear,
     currentMonth: currentMonth + 1,
+    monthName,
     todayDate,
+    daysInMonth,
+    firstDayOfWeek,
+    activeDays,
     monthTotalGB,
     avgGB,
     maxGB,
@@ -310,7 +342,7 @@ function drawProgressBar(percent, width = 600, height = 14) {
   return dc.getImage();
 }
 
-// 统一图表绘制入口 (支持柱状图与折线图)
+// 统一图表绘制入口 (支持 GitHub 贡献热力图、柱状图与折线图)
 // 获取小组件内容区满宽尺寸 (去除左右各 16pt 内边距后的真实宽度)
 function getWidgetChartWidth(family = 'medium') {
   let screenW = 390;
@@ -329,12 +361,223 @@ function getWidgetChartWidth(family = 'medium') {
   return 328;
 }
 
-// 绘制每日用量图表 (分发柱状图与折线图)
+// 绘制每日用量图表 (分发热力图、柱状图与折线图)
 function drawDailyTrafficChart(dailyStats, width = 328, height = 64, type = CONFIG.chart_type) {
+  if (type === 'heatmap') {
+    return drawMonthHeatmapChart(dailyStats, width, height);
+  }
   if (type === 'line') {
     return drawDailyLineChart(dailyStats, width, height);
   }
   return drawDailyBarChart(dailyStats, width, height);
+}
+
+// 绘制当月 GitHub 贡献热力图 (Heatmap Grid Chart) - 1:1 Retina 超清矢量渲染
+function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
+  const dc = new DrawContext();
+  dc.size = new Size(width, height);
+  dc.opaque = false;
+  dc.respectScreenScale = true;
+
+  if (!dailyStats || !dailyStats.days || dailyStats.days.length === 0) {
+    return dc.getImage();
+  }
+
+  const {
+    days,
+    monthName,
+    firstDayOfWeek,
+    daysInMonth,
+    todayDate,
+    activeDays,
+    todayGB,
+    monthTotalGB,
+    maxGB,
+    avgGB,
+    maxDay
+  } = dailyStats;
+
+  // GitHub 官方贡献色阶 (0: 微灰无用量/未来, 1~4: 浅绿到深绿)
+  const LEVEL_COLORS = [
+    '#EBEDF0', // Level 0: 浅微灰 (无用量 / 未来未到日期)
+    '#9BE9A8', // Level 1: 浅绿 (0~25%)
+    '#40C463', // Level 2: 中浅绿 (25~50%)
+    '#30A14E', // Level 3: 中深绿 (50~75%)
+    '#216E39'  // Level 4: 深绿 (75~100%)
+  ];
+
+  const isLarge = height > 90;
+  const isCompact = width < 260; // 窄屏模式下仅显示左侧热力图
+
+  // 1. 布局参数计算
+  const totalWeeks = Math.ceil((firstDayOfWeek + daysInMonth) / 7);
+  const gap = isLarge ? 3 : 2;
+  const topH = isLarge ? 16 : 13;
+  const bottomH = isLarge ? 16 : 12;
+  const availableGridH = height - topH - bottomH;
+  const cellSize = Math.min(isLarge ? 9.5 : 6.8, Math.floor((availableGridH - 6 * gap) / 7));
+  const gridH = 7 * cellSize + 6 * gap;
+  const gridY = Math.round(topH + (availableGridH - gridH) / 2);
+
+  const labelW = isLarge ? 22 : 18;
+  const labelGap = 3;
+  const heatStartX = 4;
+  const gridStartX = heatStartX + labelW + labelGap;
+  const gridW = totalWeeks * cellSize + (totalWeeks - 1) * gap;
+  const heatTotalW = gridStartX + gridW;
+
+  // 2. 绘制顶部月份标签 (如 "Sep")
+  dc.setFont(Font.boldSystemFont(isLarge ? 11 : 9));
+  dc.setTextColor(new Color('#24292F'));
+  dc.setTextAlignedLeft();
+  dc.drawTextInRect(monthName || '当月', new Rect(gridStartX, 0, 80, topH));
+
+  // 3. 绘制左侧星期标尺 (对齐 Mon, Wed, Fri)
+  const weekLabels = [
+    { row: 1, text: 'Mon' },
+    { row: 3, text: 'Wed' },
+    { row: 5, text: 'Fri' }
+  ];
+  dc.setFont(Font.systemFont(isLarge ? 8 : 7));
+  dc.setTextColor(new Color('#8E8E93'));
+  dc.setTextAlignedRight();
+  for (const wl of weekLabels) {
+    const rowY = gridY + wl.row * (cellSize + gap);
+    dc.drawTextInRect(wl.text, new Rect(heatStartX, rowY - 1, labelW, cellSize + 2));
+  }
+
+  // 4. 循环绘制整月圆角方块
+  const cornerRadius = Math.max(1.5, Math.floor(cellSize * 0.25));
+  let todayRect = null;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const item = days[d - 1];
+    if (!item) continue;
+
+    const dayIdx = firstDayOfWeek + (d - 1);
+    const col = Math.floor(dayIdx / 7);
+    const row = dayIdx % 7;
+    const x = gridStartX + col * (cellSize + gap);
+    const y = gridY + row * (cellSize + gap);
+
+    const cellRect = new Rect(x, y, cellSize, cellSize);
+    const cellPath = new Path();
+    cellPath.addRoundedRect(cellRect, cornerRadius, cornerRadius);
+    dc.addPath(cellPath);
+
+    const level = item.level !== undefined ? item.level : 0;
+    const hexColor = LEVEL_COLORS[level] || LEVEL_COLORS[0];
+    dc.setFillColor(new Color(hexColor));
+    dc.fillPath();
+
+    if (item.isToday) {
+      todayRect = cellRect;
+    }
+  }
+
+  // 5. 【今日高亮指示】为今天的外框绘制 iOS 鲜亮蓝色外边框
+  if (todayRect) {
+    const outlinePath = new Path();
+    outlinePath.addRoundedRect(
+      new Rect(todayRect.x - 1, todayRect.y - 1, todayRect.width + 2, todayRect.height + 2),
+      cornerRadius + 1,
+      cornerRadius + 1
+    );
+    dc.addPath(outlinePath);
+    dc.setStrokeColor(new Color('#007AFF'));
+    dc.setLineWidth(1.2);
+    dc.strokePath();
+  }
+
+  // 6. 绘制底部经典图例 (Less ▫️ 🟩 🟩 🟩 🟩 More)
+  const legendY = gridY + gridH + 2;
+  const legBoxSize = Math.max(4.5, cellSize - 1.5);
+  const legGap = 2;
+  const legFontSize = isLarge ? 8 : 6.5;
+
+  dc.setFont(Font.systemFont(legFontSize));
+  dc.setTextColor(new Color('#8E8E93'));
+  dc.setTextAlignedLeft();
+
+  const lessW = isLarge ? 22 : 18;
+  const legStartX = gridStartX;
+  dc.drawTextInRect('Less', new Rect(legStartX, legendY, lessW, bottomH));
+
+  let boxX = legStartX + lessW + 2;
+  for (let lvl = 0; lvl <= 4; lvl++) {
+    const lPath = new Path();
+    lPath.addRoundedRect(new Rect(boxX, legendY + 1, legBoxSize, legBoxSize), 1, 1);
+    dc.addPath(lPath);
+    dc.setFillColor(new Color(LEVEL_COLORS[lvl]));
+    dc.fillPath();
+    boxX += legBoxSize + legGap;
+  }
+
+  boxX += 1;
+  const moreW = isLarge ? 24 : 20;
+  dc.drawTextInRect('More', new Rect(boxX, legendY, moreW, bottomH));
+
+  // 7. 若空间充足，在右侧绘制当月数据指标看板 (2x2 卡片矩阵)
+  if (!isCompact && width >= 260) {
+    const splitX = Math.round(heatTotalW + (width - heatTotalW > 200 ? 16 : 12));
+    const rightStartX = splitX + 10;
+    const rightAvailW = width - rightStartX - 2;
+
+    // 绘制轻量垂直分割线
+    const sepPath = new Path();
+    sepPath.move(new Point(splitX, 8));
+    sepPath.addLine(new Point(splitX, height - 8));
+    dc.addPath(sepPath);
+    dc.setStrokeColor(new Color('#E5E5EA', 0.8));
+    dc.setLineWidth(1);
+    dc.strokePath();
+
+    // 右侧指标项：根据小组件大小合理搭配
+    const cards = isLarge ? [
+      { label: '日均用量', val: `${avgGB} GB`, color: '#007AFF' },
+      { label: '活跃天数', val: `${activeDays}/${todayDate} 天`, color: '#30A14E' },
+      { label: '最高用量', val: `${maxGB} GB`, color: '#FF9500' },
+      { label: '峰值日期', val: `${maxDay} 日`, color: '#1C1C1E' }
+    ] : [
+      { label: '今日已用', val: `${todayGB} GB`, color: '#007AFF' },
+      { label: '本月累计', val: `${monthTotalGB} GB`, color: '#1C1C1E' },
+      { label: '单日最高', val: `${maxGB} GB`, color: '#FF9500' },
+      { label: '活跃天数', val: `${activeDays}/${todayDate} 天`, color: '#30A14E' }
+    ];
+
+    const cardGapX = 6;
+    const cardGapY = isLarge ? 8 : 4;
+    const cardW = Math.floor((rightAvailW - cardGapX) / 2);
+    const cardH = Math.floor((height - 10 - cardGapY) / 2);
+
+    for (let i = 0; i < cards.length; i++) {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const cx = rightStartX + col * (cardW + cardGapX);
+      const cy = 5 + row * (cardH + cardGapY);
+
+      // 卡片圆角微背景
+      const cardPath = new Path();
+      cardPath.addRoundedRect(new Rect(cx, cy, cardW, cardH), 5, 5);
+      dc.addPath(cardPath);
+      dc.setFillColor(new Color('#F8F9FA'));
+      dc.fillPath();
+
+      // 卡片标签
+      dc.setFont(Font.systemFont(isLarge ? 9 : 8));
+      dc.setTextColor(new Color('#8E8E93'));
+      dc.setTextAlignedLeft();
+      dc.drawTextInRect(cards[i].label, new Rect(cx + 6, cy + 3, cardW - 10, 11));
+
+      // 卡片数值
+      dc.setFont(Font.boldSystemFont(isLarge ? 12 : 10.5));
+      dc.setTextColor(new Color(cards[i].color));
+      dc.setTextAlignedLeft();
+      dc.drawTextInRect(cards[i].val, new Rect(cx + 6, cy + cardH - (isLarge ? 16 : 14), cardW - 10, 14));
+    }
+  }
+
+  return dc.getImage();
 }
 
 // 绘制每日用量柱状图 (Bar Chart) - 1:1 Retina 超清矢量渲染 (100% 满宽自适应)
@@ -344,7 +587,8 @@ function drawDailyBarChart(dailyStats, width = 328, height = 64) {
   dc.opaque = false;
   dc.respectScreenScale = true;
 
-  const days = (dailyStats && dailyStats.days) ? dailyStats.days : [];
+  const allDays = (dailyStats && dailyStats.days) ? dailyStats.days : [];
+  const days = allDays.filter(d => !d.isFuture);
   const n = days.length;
   if (n === 0) return dc.getImage();
 
@@ -463,7 +707,8 @@ function drawDailyLineChart(dailyStats, width = 328, height = 64) {
   dc.opaque = false;
   dc.respectScreenScale = true;
 
-  const days = (dailyStats && dailyStats.days) ? dailyStats.days : [];
+  const allDays = (dailyStats && dailyStats.days) ? dailyStats.days : [];
+  const days = allDays.filter(d => !d.isFuture);
   const n = days.length;
   if (n === 0) return dc.getImage();
 
@@ -823,7 +1068,8 @@ function renderLargeWidget(widget, data) {
 
   chartHeader.addSpacer();
 
-  const chartSub = chartHeader.addText('今日高亮');
+  const chartSubText = CONFIG.chart_type === 'heatmap' ? '热力分布' : '今日高亮';
+  const chartSub = chartHeader.addText(chartSubText);
   chartSub.font = Font.systemFont(10);
   chartSub.textColor = new Color('#8E8E93');
 
