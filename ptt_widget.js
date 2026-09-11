@@ -340,18 +340,44 @@ function parseDailyStats(logList, subInfo) {
   const maxGB = Number((maxBytes / GB).toFixed(2));
   const todayGB = Number((todayBytes / GB).toFixed(2));
 
-  // 5. 热力图色阶计算 (0: 无用量/未来, 1: 浅绿, 2: 中浅绿, 3: 中深绿, 4: 深绿)
-  for (const item of days) {
-    if (item.isFuture || item.gb === 0) {
+  // 5. GitHub 贡献图标准色阶算法 (基于有效用量的分位数动态分档，防止全量深绿)
+  const activeGbs = days
+    .filter(d => !d.isFuture && d.gb > 0)
+    .map(d => d.gb)
+    .sort((a, b) => a - b);
+
+  if (activeGbs.length === 0) {
+    for (const item of days) {
       item.level = 0;
-    } else if (maxGB <= 0) {
-      item.level = 1;
+    }
+  } else {
+    const minGb = activeGbs[0];
+    const maxGb = activeGbs[activeGbs.length - 1];
+
+    if (minGb === maxGb) {
+      // 当所有天数用量相同（如网络降级全平摊），归为基础适中档 Level 2，绝不误判为深绿 Level 4
+      for (const item of days) {
+        item.level = (item.isFuture || item.gb === 0) ? 0 : 2;
+      }
     } else {
-      const ratio = item.gb / maxGB;
-      if (ratio <= 0.25) item.level = 1;
-      else if (ratio <= 0.50) item.level = 2;
-      else if (ratio <= 0.75) item.level = 3;
-      else item.level = 4;
+      // 采用四分位数动态梯级（Q1, Q2, Q3）确保浅绿至深绿呈现丰富自然的层次过渡
+      const q1 = activeGbs[Math.floor(activeGbs.length * 0.25)];
+      const q2 = activeGbs[Math.floor(activeGbs.length * 0.50)];
+      const q3 = activeGbs[Math.floor(activeGbs.length * 0.75)];
+
+      for (const item of days) {
+        if (item.isFuture || item.gb === 0) {
+          item.level = 0;
+        } else if (item.gb <= q1) {
+          item.level = 1;
+        } else if (item.gb <= q2) {
+          item.level = 2;
+        } else if (item.gb <= q3) {
+          item.level = 3;
+        } else {
+          item.level = 4;
+        }
+      }
     }
   }
 
