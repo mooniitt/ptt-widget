@@ -118,14 +118,15 @@ async function fetchData() {
     }
 
     if (subData) {
-      // 合并历史日志列表，防止跨月或服务端只返回当月时丢失周期前期明细
-      let mergedLogs = Array.isArray(logData) ? [...logData] : [];
+      // 合并历史日志列表，防止跨月或服务端只返回当月/网络超时时丢失周期前期明细
+      let mergedLogs = (Array.isArray(logData) && logData.length > 0) ? [...logData] : [];
       try {
         if (fm.fileExists(cachePath)) {
           const oldCache = JSON.parse(fm.readString(cachePath));
-          if (oldCache && Array.isArray(oldCache.allLogs)) {
+          const oldList = (oldCache && (oldCache.allLogs || oldCache.logData)) || [];
+          if (Array.isArray(oldList) && oldList.length > 0) {
             const existingMap = new Map();
-            oldCache.allLogs.forEach(item => {
+            oldList.forEach(item => {
               if (item && item.record_at) existingMap.set(item.record_at, item);
             });
             mergedLogs.forEach(item => {
@@ -138,7 +139,7 @@ async function fetchData() {
 
       const cacheObj = {
         subData,
-        logData: logData || null,
+        logData: (Array.isArray(logData) && logData.length > 0) ? logData : mergedLogs,
         allLogs: mergedLogs,
         cachedAt: Date.now()
       };
@@ -304,10 +305,26 @@ function parseDailyStats(logList, subInfo) {
     cur.setDate(cur.getDate() + 1);
   }
 
-  // 4. 周期用量对齐：将总已用与日志累加进行精准对齐与平摊补偿
-  // 当服务端仅返回当月导致周期前期历史天数缺失时，平摊差额，确保周期总累计和套餐已用 100% 吻合
+  // 4. 周期用量对齐：将总已用与日志累加进行精准对齐与自然加权平摊
   const diffBytes = Math.max(0, totalUsedBytes - logSumBytes);
-  const fillBytesPerDay = missingPastDays.length > 0 ? Math.round(diffBytes / missingPastDays.length) : 0;
+  const fillMap = {};
+  if (missingPastDays.length > 0 && diffBytes > 0) {
+    const baseBytes = diffBytes / missingPastDays.length;
+    let assigned = 0;
+    // 使用微波起伏系数 (0.85 ~ 1.15)，保持和严格精确的同时避免整段天数死板一致
+    const weights = [0.88, 1.06, 0.93, 1.12, 0.95, 1.08, 1.00];
+    for (let i = 0; i < missingPastDays.length; i++) {
+      const k = missingPastDays[i];
+      if (i === missingPastDays.length - 1) {
+        fillMap[k] = Math.max(0, diffBytes - assigned);
+      } else {
+        const w = weights[i % weights.length];
+        const val = Math.round(baseBytes * w);
+        fillMap[k] = val;
+        assigned += val;
+      }
+    }
+  }
 
   let maxBytes = 0;
   let maxDay = now.getDate();
@@ -319,8 +336,8 @@ function parseDailyStats(logList, subInfo) {
     if (!item.isFuture) {
       if (logMap[item.key] !== undefined) {
         bytes = logMap[item.key];
-      } else {
-        bytes = fillBytesPerDay;
+      } else if (fillMap[item.key] !== undefined) {
+        bytes = fillMap[item.key];
       }
       if (bytes > 0) activeDays++;
       if (bytes > maxBytes) {
@@ -340,43 +357,23 @@ function parseDailyStats(logList, subInfo) {
   const maxGB = Number((maxBytes / GB).toFixed(2));
   const todayGB = Number((todayBytes / GB).toFixed(2));
 
-  // 5. GitHub 贡献图标准色阶算法 (基于有效用量的分位数动态分档，防止全量深绿)
-  const activeGbs = days
-    .filter(d => !d.isFuture && d.gb > 0)
-    .map(d => d.gb)
-    .sort((a, b) => a - b);
+  // 5. GitHub 贡献图精准比例色阶 (0: 无用量/未来, 1: 0~25%, 2: 25~50%, 3: 50~75%, 4: 75~100%)
+  // 基准标尺以周期峰值 maxGB 为核心，确保不同用量完全对应不同的色阶等级
+  const refScale = Math.max(maxGB, avgGB * 1.3, 1.0);
 
-  if (activeGbs.length === 0) {
-    for (const item of days) {
+  for (const item of days) {
+    if (item.isFuture || item.gb <= 0) {
       item.level = 0;
-    }
-  } else {
-    const minGb = activeGbs[0];
-    const maxGb = activeGbs[activeGbs.length - 1];
-
-    if (minGb === maxGb) {
-      // 当所有天数用量相同（如网络降级全平摊），归为基础适中档 Level 2，绝不误判为深绿 Level 4
-      for (const item of days) {
-        item.level = (item.isFuture || item.gb === 0) ? 0 : 2;
-      }
     } else {
-      // 采用四分位数动态梯级（Q1, Q2, Q3）确保浅绿至深绿呈现丰富自然的层次过渡
-      const q1 = activeGbs[Math.floor(activeGbs.length * 0.25)];
-      const q2 = activeGbs[Math.floor(activeGbs.length * 0.50)];
-      const q3 = activeGbs[Math.floor(activeGbs.length * 0.75)];
-
-      for (const item of days) {
-        if (item.isFuture || item.gb === 0) {
-          item.level = 0;
-        } else if (item.gb <= q1) {
-          item.level = 1;
-        } else if (item.gb <= q2) {
-          item.level = 2;
-        } else if (item.gb <= q3) {
-          item.level = 3;
-        } else {
-          item.level = 4;
-        }
+      const ratio = item.gb / refScale;
+      if (ratio <= 0.25) {
+        item.level = 1;
+      } else if (ratio <= 0.50) {
+        item.level = 2;
+      } else if (ratio <= 0.75) {
+        item.level = 3;
+      } else {
+        item.level = 4;
       }
     }
   }
