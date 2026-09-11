@@ -434,54 +434,51 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
   const isLarge = height >= 118;
   const isCompact = width < 260; // 窄屏模式下仅显示左侧热力图
 
-  // 1. 布局参数计算
-  const totalWeeks = Math.ceil((firstDayOfWeek + daysInMonth) / 7);
-  const gap = isLarge ? 3 : 2;
-  const topH = isLarge ? 16 : 13;
-  const bottomH = isLarge ? 8 : 6;
-  const availableGridH = height - topH - bottomH;
-  const cellSize = Math.min(isLarge ? 10 : 7.2, Math.floor((availableGridH - 6 * gap) / 7));
-  const gridH = 7 * cellSize + 6 * gap;
-  const gridY = Math.round(topH + (availableGridH - gridH) / 2);
+  // 1. 布局参数计算 (星期横轴化：7列星期 × 5~6周行，网格方块显著放大)
+  const firstDayCol = (firstDayOfWeek + 6) % 7; // 周一为0，周日为6
+  const totalRows = Math.ceil((firstDayCol + daysInMonth) / 7);
+  const weekHeaders = ['一', '二', '三', '四', '五', '六', '日'];
 
-  const labelW = isLarge ? 22 : 18;
-  const labelGap = 3;
-  const heatStartX = 4;
-  const gridStartX = heatStartX + labelW + labelGap;
-  const gridW = totalWeeks * cellSize + (totalWeeks - 1) * gap;
+  const topH = 14;
+  const weekHeaderH = 11;
+  const bottomMargin = 4;
+  const availGridH = height - topH - weekHeaderH - bottomMargin;
+  const gap = isLarge ? 3.5 : 2.5;
+  const cellSize = Math.min(isLarge ? 13 : 11.5, Math.floor((availGridH - (totalRows - 1) * gap) / totalRows));
+  const gridH = totalRows * cellSize + (totalRows - 1) * gap;
+  const gridW = 7 * cellSize + 6 * gap;
+
+  const gridStartX = 6;
   const heatTotalW = gridStartX + gridW;
+  const weekHeaderY = topH + 2;
+  const gridY = weekHeaderY + weekHeaderH + 2;
 
   // 2. 绘制顶部月份标签 (如 "Sep")
-  dc.setFont(Font.boldSystemFont(isLarge ? 11 : 9));
+  dc.setFont(Font.boldSystemFont(isLarge ? 11 : 10));
   dc.setTextColor(new Color('#24292F'));
   dc.setTextAlignedLeft();
-  dc.drawTextInRect(monthName || '当月', new Rect(gridStartX, 0, 80, topH));
+  dc.drawTextInRect(monthName || '当月', new Rect(gridStartX, 0, gridW, topH));
 
-  // 3. 绘制左侧星期标尺 (对齐 Mon, Wed, Fri)
-  const weekLabels = [
-    { row: 1, text: 'Mon' },
-    { row: 3, text: 'Wed' },
-    { row: 5, text: 'Fri' }
-  ];
-  dc.setFont(Font.systemFont(isLarge ? 8 : 7));
+  // 3. 绘制顶部横轴星期标尺 (对齐 一 至 日)
+  dc.setFont(Font.systemFont(isLarge ? 8.5 : 7.5));
   dc.setTextColor(new Color('#8E8E93'));
-  dc.setTextAlignedRight();
-  for (const wl of weekLabels) {
-    const rowY = gridY + wl.row * (cellSize + gap);
-    dc.drawTextInRect(wl.text, new Rect(heatStartX, rowY - 1, labelW, cellSize + 2));
+  dc.setTextAlignedCenter();
+  for (let c = 0; c < 7; c++) {
+    const wx = gridStartX + c * (cellSize + gap);
+    dc.drawTextInRect(weekHeaders[c], new Rect(wx, weekHeaderY, cellSize, weekHeaderH));
   }
 
-  // 4. 循环绘制整月圆角方块
-  const cornerRadius = Math.max(1.5, Math.floor(cellSize * 0.25));
+  // 4. 循环绘制整月圆角方块 (按自然月历排布)
+  const cornerRadius = Math.max(2, Math.floor(cellSize * 0.22));
   let todayRect = null;
 
   for (let d = 1; d <= daysInMonth; d++) {
     const item = days[d - 1];
     if (!item) continue;
 
-    const dayIdx = firstDayOfWeek + (d - 1);
-    const col = Math.floor(dayIdx / 7);
-    const row = dayIdx % 7;
+    const dayIdx = firstDayCol + (d - 1);
+    const col = dayIdx % 7;
+    const row = Math.floor(dayIdx / 7);
     const x = gridStartX + col * (cellSize + gap);
     const y = gridY + row * (cellSize + gap);
 
@@ -510,7 +507,7 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     );
     dc.addPath(outlinePath);
     dc.setStrokeColor(new Color('#007AFF'));
-    dc.setLineWidth(1.2);
+    dc.setLineWidth(1.4);
     dc.strokePath();
   }
 
