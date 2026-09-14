@@ -7,13 +7,17 @@
 // ================= 配置区域 =================
 const CONFIG = {
   // 脚本版本号
-  version: 'v1.2.0',
+  version: 'v1.3.0',
   // 订阅 API 地址
   api_url: 'https://ptt.ixlmo.com/api/v1/user/getSubscribe',
   // 每日流量统计 API 地址
   stat_api_url: 'https://ptt.ixlmo.com/api/v1/user/stat/getTrafficLog',
   // 默认图表显示类型: 'heatmap' (GitHub 贡献热力图), 'bar' (柱状图) 或 'line' (折线面积图)
   chart_type: 'heatmap',
+  // 单日流量超量警告阈值（单位：GB，设为 0 则关闭警告，默认 10 GB）
+  daily_warning_threshold: 10,
+  // 是否在单日超量时触发系统本地通知提醒
+  enable_warning_notification: true,
   // 从 Loader 注入的全局变量或小组件参数中读取 Token
   token: globalThis.__LOCAL_TRAFFIC_TOKEN__ || (args.widgetParameter && args.widgetParameter.trim()) || '',
   // 刷新间隔（秒）
@@ -38,20 +42,25 @@ async function main() {
       const data = await fetchData();
       if (!data) {
         renderErrorWidget(widget, '服务不可用');
-      } else if (widgetSize === 'accessoryRectangular') {
-        renderAccessoryRectangular(widget, data);
-      } else if (widgetSize === 'accessoryCircular') {
-        renderAccessoryCircular(widget, data);
-      } else if (widgetSize === 'accessoryInline') {
-        renderAccessoryInline(widget, data);
-      } else if (widgetSize === 'small') {
-        renderSmallWidget(widget, data);
-      } else if (widgetSize === 'extraLarge') {
-        renderExtraLargeWidget(widget, data);
-      } else if (widgetSize === 'large') {
-        renderLargeWidget(widget, data);
       } else {
-        renderMediumWidget(widget, data);
+        // 校验并触发单日流量超标系统预警提醒
+        await checkAndTriggerAlertNotification(data);
+
+        if (widgetSize === 'accessoryRectangular') {
+          renderAccessoryRectangular(widget, data);
+        } else if (widgetSize === 'accessoryCircular') {
+          renderAccessoryCircular(widget, data);
+        } else if (widgetSize === 'accessoryInline') {
+          renderAccessoryInline(widget, data);
+        } else if (widgetSize === 'small') {
+          renderSmallWidget(widget, data);
+        } else if (widgetSize === 'extraLarge') {
+          renderExtraLargeWidget(widget, data);
+        } else if (widgetSize === 'large') {
+          renderLargeWidget(widget, data);
+        } else {
+          renderMediumWidget(widget, data);
+        }
       }
     }
   } catch (err) {
@@ -357,9 +366,20 @@ function parseDailyStats(logList, subInfo) {
   const maxGB = Number((maxBytes / GB).toFixed(2));
   const todayGB = Number((todayBytes / GB).toFixed(2));
 
-  // 5. GitHub 贡献图精准比例色阶 (0: 无用量/未来, 1: 0~25%, 2: 25~50%, 3: 50~75%, 4: 75~100%)
-  // 基准标尺以周期峰值 maxGB 为核心，确保不同用量完全对应不同的色阶等级
-  const refScale = Math.max(maxGB, avgGB * 1.3, 1.0);
+  // 5. 流量预警判定与标记 (支持用户自定义单日预警阈值，如超过 10GB)
+  const warnThreshold = Number(CONFIG.daily_warning_threshold) || 0;
+  const isTodayWarning = warnThreshold > 0 && todayGB >= warnThreshold;
+  const isMaxDayWarning = warnThreshold > 0 && maxGB >= warnThreshold;
+
+  for (const item of days) {
+    item.isWarning = (!item.isFuture && warnThreshold > 0 && item.gb >= warnThreshold);
+  }
+
+  // 6. GitHub 贡献图精准比例色阶 (0: 无用量/未来, 1: 0~25%, 2: 25~50%, 3: 50~75%, 4: 75~100%)
+  // 基准标尺计算：若出现单日突发超大流量（如 40GB），标尺上限以预警阈值或正常天最高值为参考，
+  // 避免将常规使用的深浅绿色过度压缩稀释
+  const normalMaxGB = warnThreshold > 0 ? Math.min(maxGB, warnThreshold) : maxGB;
+  const refScale = Math.max(normalMaxGB, avgGB * 1.3, 1.0);
 
   for (const item of days) {
     if (item.isFuture || item.gb <= 0) {
@@ -393,7 +413,10 @@ function parseDailyStats(logList, subInfo) {
     avgGB,
     maxGB,
     maxDay,
-    todayGB
+    todayGB,
+    warnThreshold,
+    isTodayWarning,
+    isMaxDayWarning
   };
 }
 
@@ -403,6 +426,51 @@ function formatCurrentTime() {
   const h = String(now.getHours()).padStart(2, '0');
   const m = String(now.getMinutes()).padStart(2, '0');
   return `${h}:${m}`;
+}
+
+// 流量异常消耗本地系统推送预警 (配备防频发本地缓存机制，单日仅提醒一次)
+async function checkAndTriggerAlertNotification(data) {
+  if (!CONFIG.enable_warning_notification) return;
+  const threshold = Number(CONFIG.daily_warning_threshold) || 0;
+  if (threshold <= 0) return;
+
+  const daily = data && data.dailyStats;
+  if (!daily || !daily.isTodayWarning) return;
+
+  try {
+    const fm = FileManager.local();
+    const alertCachePath = fm.joinPath(fm.documentsDirectory(), 'traffic_alert_record.json');
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    let alertRecord = {};
+    if (fm.fileExists(alertCachePath)) {
+      try {
+        alertRecord = JSON.parse(fm.readString(alertCachePath)) || {};
+      } catch (e) {}
+    }
+
+    // 若今日已经对该阈值发送过提醒，则不重复提醒骚扰
+    if (alertRecord.lastDate === todayStr && alertRecord.threshold === threshold) {
+      return;
+    }
+
+    // 发起系统本地横幅通知
+    const notif = new Notification();
+    notif.title = '⚠️ 流量消耗超量预警';
+    notif.body = `今日流量已消耗 ${daily.todayGB} GB，超过预警阈值 (${threshold} GB)，请注意排查后台应用或热点共享！`;
+    notif.sound = 'default';
+    await notif.schedule();
+
+    // 持久化记录
+    alertRecord.lastDate = todayStr;
+    alertRecord.threshold = threshold;
+    alertRecord.lastAlertGB = daily.todayGB;
+    alertRecord.timestamp = Date.now();
+    fm.writeString(alertCachePath, JSON.stringify(alertRecord));
+  } catch (err) {
+    console.log('触发流量预警通知失败: ' + err);
+  }
 }
 
 // ================= 图表与图形渲染引擎 =================
@@ -582,8 +650,13 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     cellPath.addRoundedRect(cellRect, cornerRadius, cornerRadius);
     dc.addPath(cellPath);
 
-    const level = item.level !== undefined ? item.level : 0;
-    const hexColor = LEVEL_COLORS[level] || LEVEL_COLORS[0];
+    let hexColor;
+    if (item.isWarning) {
+      hexColor = '#FF4D4F'; // 鲜明警示珊瑚红 (单日异常高消耗 >= 10G)
+    } else {
+      const level = item.level !== undefined ? item.level : 0;
+      hexColor = LEVEL_COLORS[level] || LEVEL_COLORS[0];
+    }
     dc.setFillColor(new Color(hexColor));
     dc.fillPath();
 
@@ -592,8 +665,9 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     }
   }
 
-  // 5. 【今日高亮指示】为今天的外框绘制 iOS 鲜亮蓝色外边框
+  // 5. 【今日高亮指示】为今天的外框绘制指示边框 (若今日超标则显示警示红边框)
   if (todayRect) {
+    const isTodayWarning = dailyStats && dailyStats.isTodayWarning;
     const outlinePath = new Path();
     outlinePath.addRoundedRect(
       new Rect(todayRect.x - 1, todayRect.y - 1, todayRect.width + 2, todayRect.height + 2),
@@ -601,8 +675,8 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
       cornerRadius + 1
     );
     dc.addPath(outlinePath);
-    dc.setStrokeColor(new Color('#007AFF'));
-    dc.setLineWidth(1.4);
+    dc.setStrokeColor(new Color(isTodayWarning ? '#FF3B30' : '#007AFF'));
+    dc.setLineWidth(1.5);
     dc.strokePath();
   }
 
@@ -624,11 +698,21 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
     dc.strokePath();
 
     // 右侧指标项：今日已用、周期累计、单日最高、剩余流量
+    const isTodayWarning = dailyStats && dailyStats.isTodayWarning;
+    const isMaxWarning = dailyStats && dailyStats.isMaxDayWarning;
     const remStr = `${remainingGB !== undefined ? remainingGB : 0} GB`;
     const cards = [
-      { label: '今日已用', val: `${todayGB} GB`, color: '#007AFF' },
+      {
+        label: isTodayWarning ? '今日已用 ⚠️' : '今日已用',
+        val: `${todayGB} GB`,
+        color: isTodayWarning ? '#FF3B30' : '#007AFF'
+      },
       { label: '周期累计', val: `${cycleTotalGB || monthTotalGB} GB`, color: '#1C1C1E' },
-      { label: '单日最高', val: `${maxGB} GB`, color: '#FF9500' },
+      {
+        label: isMaxWarning ? '单日最高 ⚠️' : '单日最高',
+        val: `${maxGB} GB`,
+        color: isMaxWarning ? '#FF3B30' : '#FF9500'
+      },
       { label: '剩余流量', val: remStr, color: '#10B981' }
     ];
 
@@ -741,7 +825,10 @@ function drawDailyBarChart(dailyStats, width = 328, height = 64) {
     barPath.addRoundedRect(new Rect(x, y, barWidth, barH), cornerRadius, cornerRadius);
     dc.addPath(barPath);
 
-    if (item.isToday) {
+    if (item.isWarning) {
+      // 超标警示红 (单日 >= 10G，如突发40G)
+      dc.setFillColor(new Color('#FF3B30'));
+    } else if (item.isToday) {
       // 今日高亮主色 (饱满 iOS 纯蓝)
       dc.setFillColor(new Color('#007AFF'));
     } else if (gbVal === 0) {
@@ -763,7 +850,7 @@ function drawDailyBarChart(dailyStats, width = 328, height = 64) {
 
     if (showLabel) {
       dc.setFont(item.isToday ? Font.boldSystemFont(9) : Font.systemFont(9));
-      dc.setTextColor(item.isToday ? new Color('#007AFF') : new Color('#636366'));
+      dc.setTextColor(item.isToday ? new Color(item.isWarning ? '#FF3B30' : '#007AFF') : new Color('#636366'));
       dc.setTextAlignedCenter();
       const labelW = Math.max(barWidth, 20);
       const labelX = Math.max(0, Math.min(width - labelW, Math.round(x - (labelW - barWidth) / 2)));
@@ -773,10 +860,11 @@ function drawDailyBarChart(dailyStats, width = 328, height = 64) {
 
   // 3. 【顶层绘制】今日用量微标签 (精确对齐当天那根柱子的水平中心上方)
   let todayLabelX = sidePadding;
-  const todayLabelW = 40;
+  const todayLabelW = 46;
   if (dailyStats && dailyStats.todayGB !== undefined) {
+    const isTodayWarning = dailyStats.isTodayWarning;
     dc.setFont(Font.boldSystemFont(10));
-    dc.setTextColor(new Color('#F5C518'));
+    dc.setTextColor(new Color(isTodayWarning ? '#FF3B30' : '#F5C518'));
     dc.setTextAlignedCenter();
 
     if (hasToday) {
@@ -787,7 +875,8 @@ function drawDailyBarChart(dailyStats, width = 328, height = 64) {
     }
     todayLabelX = Math.max(sidePadding, Math.min(width - sidePadding - todayLabelW, todayLabelX));
 
-    dc.drawTextInRect(`${dailyStats.todayGB}G`, new Rect(todayLabelX, 0, todayLabelW, 13));
+    const todayText = isTodayWarning ? `${dailyStats.todayGB}G⚠️` : `${dailyStats.todayGB}G`;
+    dc.drawTextInRect(todayText, new Rect(todayLabelX, 0, todayLabelW, 13));
   }
 
   return dc.getImage();
@@ -874,13 +963,24 @@ function drawDailyLineChart(dailyStats, width = 328, height = 64) {
     const item = pt.item;
 
     const dotPath = new Path();
-    const radius = item.isToday ? 3.5 : 2;
+    const radius = item.isToday ? 3.5 : (item.isWarning ? 3 : 2);
     dotPath.addEllipse(new Rect(pt.x - radius, pt.y - radius, radius * 2, radius * 2));
     dc.addPath(dotPath);
-    dc.setFillColor(item.isToday ? new Color('#007AFF') : new Color('#4A90E2'));
+    if (item.isWarning) {
+      dc.setFillColor(new Color('#FF3B30'));
+    } else {
+      dc.setFillColor(item.isToday ? new Color('#007AFF') : new Color('#4A90E2'));
+    }
     dc.fillPath();
 
-    if (item.isToday) {
+    if (item.isWarning) {
+      const haloPath = new Path();
+      haloPath.addEllipse(new Rect(pt.x - 6.5, pt.y - 6.5, 13, 13));
+      dc.addPath(haloPath);
+      dc.setStrokeColor(new Color('#FF3B30', 0.45));
+      dc.setLineWidth(1.6);
+      dc.strokePath();
+    } else if (item.isToday) {
       const haloPath = new Path();
       haloPath.addEllipse(new Rect(pt.x - 6, pt.y - 6, 12, 12));
       dc.addPath(haloPath);
@@ -898,7 +998,7 @@ function drawDailyLineChart(dailyStats, width = 328, height = 64) {
 
     if (showLabel) {
       dc.setFont(item.isToday ? Font.boldSystemFont(9) : Font.systemFont(9));
-      dc.setTextColor(item.isToday ? new Color('#007AFF') : new Color('#636366'));
+      dc.setTextColor(item.isToday ? new Color(item.isWarning ? '#FF3B30' : '#007AFF') : new Color('#636366'));
       dc.setTextAlignedCenter();
       dc.drawTextInRect(`${item.day}`, new Rect(pt.x - 12, chartBottom + 2, 24, 14));
     }
@@ -906,10 +1006,11 @@ function drawDailyLineChart(dailyStats, width = 328, height = 64) {
 
   // 6. 【顶层绘制】今日用量微标签 (精确居中对齐到当天坐标点上方)
   let todayLabelX = sidePadding;
-  const todayLabelW = 40;
+  const todayLabelW = 46;
   if (dailyStats && dailyStats.todayGB !== undefined) {
+    const isTodayWarning = dailyStats.isTodayWarning;
     dc.setFont(Font.boldSystemFont(10));
-    dc.setTextColor(new Color('#F5C518'));
+    dc.setTextColor(new Color(isTodayWarning ? '#FF3B30' : '#F5C518'));
     dc.setTextAlignedCenter();
 
     if (todayPt) {
@@ -918,7 +1019,8 @@ function drawDailyLineChart(dailyStats, width = 328, height = 64) {
       todayLabelX = width - sidePadding - todayLabelW;
     }
     todayLabelX = Math.max(sidePadding, Math.min(width - sidePadding - todayLabelW, todayLabelX));
-    dc.drawTextInRect(`${dailyStats.todayGB}G`, new Rect(todayLabelX, 0, todayLabelW, 13));
+    const todayText = isTodayWarning ? `${dailyStats.todayGB}G⚠️` : `${dailyStats.todayGB}G`;
+    dc.drawTextInRect(todayText, new Rect(todayLabelX, 0, todayLabelW, 13));
   }
 
   return dc.getImage();
@@ -947,7 +1049,9 @@ function renderStatusBadge(stack, data, isSmall = false) {
 
 // 中号小组件 (Medium 核心主视图)
 function renderMediumWidget(widget, data) {
-  // 1. 顶部栏：套餐名称 + 重置提醒气泡
+  const isTodayWarning = data.dailyStats && data.dailyStats.isTodayWarning;
+
+  // 1. 顶部栏：套餐名称 + 重置提醒气泡 / 今日超量预警胶囊
   const headerStack = widget.addStack();
   headerStack.layoutHorizontally();
   headerStack.centerAlignContent();
@@ -960,13 +1064,23 @@ function renderMediumWidget(widget, data) {
   headerStack.addSpacer();
 
   const resetStack = headerStack.addStack();
-  resetStack.backgroundColor = new Color('#F2F4F7');
-  resetStack.cornerRadius = 6;
-  resetStack.setPadding(2, 7, 2, 7);
+  if (isTodayWarning) {
+    resetStack.backgroundColor = new Color('#FFF1F0');
+    resetStack.cornerRadius = 6;
+    resetStack.setPadding(2, 7, 2, 7);
 
-  const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
-  resetText.font = Font.systemFont(10);
-  resetText.textColor = new Color('#007AFF');
+    const alertText = resetStack.addText(`⚠️ 今日已用 ${data.dailyStats.todayGB}G`);
+    alertText.font = Font.boldSystemFont(10);
+    alertText.textColor = new Color('#FF3B30');
+  } else {
+    resetStack.backgroundColor = new Color('#F2F4F7');
+    resetStack.cornerRadius = 6;
+    resetStack.setPadding(2, 7, 2, 7);
+
+    const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
+    resetText.font = Font.systemFont(10);
+    resetText.textColor = new Color('#007AFF');
+  }
 
   widget.addSpacer(6);
 
@@ -993,7 +1107,8 @@ function renderMediumWidget(widget, data) {
   footerStack.layoutHorizontally();
   footerStack.centerAlignContent();
 
-  const expireText = footerStack.addText(`到期: ${data.expireDateStr}`);
+  const expireLabel = isTodayWarning ? `到期: ${data.expireDateStr} · ${data.resetDaysLeft}天后重置` : `到期: ${data.expireDateStr}`;
+  const expireText = footerStack.addText(expireLabel);
   expireText.font = Font.systemFont(9);
   expireText.textColor = new Color('#8E8E93');
 
@@ -1005,8 +1120,9 @@ function renderMediumWidget(widget, data) {
 // 大号小组件 (Large 完整五段式高质感数据看板)
 function renderLargeWidget(widget, data) {
   const chartW = getWidgetChartWidth('large');
+  const isTodayWarning = data.dailyStats && data.dailyStats.isTodayWarning;
 
-  // 1. 顶部栏：套餐名称 + 重置倒计时胶囊
+  // 1. 顶部栏：套餐名称 + 重置倒计时 / 超量警示胶囊
   const headerStack = widget.addStack();
   headerStack.layoutHorizontally();
   headerStack.centerAlignContent();
@@ -1019,12 +1135,21 @@ function renderLargeWidget(widget, data) {
   headerStack.addSpacer();
 
   const resetStack = headerStack.addStack();
-  resetStack.backgroundColor = new Color('#F2F4F7');
-  resetStack.cornerRadius = 6;
-  resetStack.setPadding(3, 8, 3, 8);
-  const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
-  resetText.font = Font.systemFont(11);
-  resetText.textColor = new Color('#007AFF');
+  if (isTodayWarning) {
+    resetStack.backgroundColor = new Color('#FFF1F0');
+    resetStack.cornerRadius = 6;
+    resetStack.setPadding(3, 8, 3, 8);
+    const alertText = resetStack.addText(`⚠️ 今日已用 ${data.dailyStats.todayGB}G`);
+    alertText.font = Font.boldSystemFont(11);
+    alertText.textColor = new Color('#FF3B30');
+  } else {
+    resetStack.backgroundColor = new Color('#F2F4F7');
+    resetStack.cornerRadius = 6;
+    resetStack.setPadding(3, 8, 3, 8);
+    const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
+    resetText.font = Font.systemFont(11);
+    resetText.textColor = new Color('#007AFF');
+  }
 
   widget.addSpacer(9);
 
@@ -1097,10 +1222,19 @@ function renderLargeWidget(widget, data) {
     gridStack.layoutHorizontally();
     gridStack.centerAlignContent();
 
+    const isMaxWarning = daily.isMaxDayWarning;
     const items = [
-      { label: '今日已用', val: `${daily.todayGB} G`, color: '#007AFF' },
+      {
+        label: isTodayWarning ? '今日已用 ⚠️' : '今日已用',
+        val: `${daily.todayGB} G`,
+        color: isTodayWarning ? '#FF3B30' : '#007AFF'
+      },
       { label: '剩余天数', val: `${data.resetDaysLeft} 天`, color: '#1C1C1E' },
-      { label: '单日峰值', val: `${daily.maxGB} G`, color: '#FF9500' },
+      {
+        label: isMaxWarning ? '单日峰值 ⚠️' : '单日峰值',
+        val: `${daily.maxGB} G`,
+        color: isMaxWarning ? '#FF3B30' : '#FF9500'
+      },
       { label: '周期累计', val: `${daily.cycleTotalGB || daily.monthTotalGB} G`, color: '#1C1C1E' }
     ];
 
@@ -1172,7 +1306,8 @@ function renderLargeWidget(widget, data) {
   footerStack.layoutHorizontally();
   footerStack.centerAlignContent();
 
-  const expireText = footerStack.addText(`到期: ${data.expireDateStr}`);
+  const expireLabel = isTodayWarning ? `到期: ${data.expireDateStr} · ${data.resetDaysLeft}天后重置` : `到期: ${data.expireDateStr}`;
+  const expireText = footerStack.addText(expireLabel);
   expireText.font = Font.systemFont(9);
   expireText.textColor = new Color('#8E8E93');
 
@@ -1191,6 +1326,8 @@ function renderExtraLargeWidget(widget, data) {
   const leftCol = container.addStack();
   leftCol.layoutVertically();
 
+  const isTodayWarning = data.dailyStats && data.dailyStats.isTodayWarning;
+
   const headerStack = leftCol.addStack();
   headerStack.layoutHorizontally();
   headerStack.centerAlignContent();
@@ -1202,12 +1339,21 @@ function renderExtraLargeWidget(widget, data) {
   headerStack.addSpacer();
 
   const resetStack = headerStack.addStack();
-  resetStack.backgroundColor = new Color('#F2F4F7');
-  resetStack.cornerRadius = 6;
-  resetStack.setPadding(3, 8, 3, 8);
-  const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
-  resetText.font = Font.systemFont(11);
-  resetText.textColor = new Color('#007AFF');
+  if (isTodayWarning) {
+    resetStack.backgroundColor = new Color('#FFF1F0');
+    resetStack.cornerRadius = 6;
+    resetStack.setPadding(3, 8, 3, 8);
+    const alertText = resetStack.addText(`⚠️ 今日已用 ${data.dailyStats.todayGB}G`);
+    alertText.font = Font.boldSystemFont(11);
+    alertText.textColor = new Color('#FF3B30');
+  } else {
+    resetStack.backgroundColor = new Color('#F2F4F7');
+    resetStack.cornerRadius = 6;
+    resetStack.setPadding(3, 8, 3, 8);
+    const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
+    resetText.font = Font.systemFont(11);
+    resetText.textColor = new Color('#007AFF');
+  }
 
   leftCol.addSpacer(12);
 
@@ -1258,10 +1404,19 @@ function renderExtraLargeWidget(widget, data) {
     gridStack.layoutHorizontally();
     gridStack.centerAlignContent();
 
+    const isMaxWarning = daily.isMaxDayWarning;
     const items = [
-      { label: '今日已用', val: `${daily.todayGB}G`, color: '#007AFF' },
+      {
+        label: isTodayWarning ? '今日已用 ⚠️' : '今日已用',
+        val: `${daily.todayGB}G`,
+        color: isTodayWarning ? '#FF3B30' : '#007AFF'
+      },
       { label: '剩余天数', val: `${data.resetDaysLeft}天`, color: '#1C1C1E' },
-      { label: '单日最高', val: `${daily.maxGB}G`, color: '#FF9500' },
+      {
+        label: isMaxWarning ? '单日最高 ⚠️' : '单日最高',
+        val: `${daily.maxGB}G`,
+        color: isMaxWarning ? '#FF3B30' : '#FF9500'
+      },
       { label: '周期累计', val: `${daily.cycleTotalGB || daily.monthTotalGB}G`, color: '#1C1C1E' }
     ];
 
@@ -1346,7 +1501,14 @@ function renderAccessoryRectangular(widget, data) {
   widget.addSpacer(2);
 
   const daily = data.dailyStats;
-  const infoText = widget.addText(daily ? `今日 ${daily.todayGB}G · ${data.resetDaysLeft}天后重置` : `${data.resetDaysLeft}天后重置 · 已用${data.usedPercent}%`);
+  let infoStr = '';
+  if (daily) {
+    const prefix = daily.isTodayWarning ? '⚠️ ' : '';
+    infoStr = `${prefix}今日 ${daily.todayGB}G · ${data.resetDaysLeft}天后重置`;
+  } else {
+    infoStr = `${data.resetDaysLeft}天后重置 · 已用${data.usedPercent}%`;
+  }
+  const infoText = widget.addText(infoStr);
   infoText.font = Font.systemFont(9);
   infoText.lineLimit = 1;
 }
@@ -1373,7 +1535,13 @@ function renderAccessoryCircular(widget, data) {
 // 锁屏单行小组件 (Accessory Inline, iOS 16+)
 function renderAccessoryInline(widget, data) {
   const daily = data.dailyStats;
-  const text = daily ? `剩余 ${data.remainingGB}G · 今日 ${daily.todayGB}G` : `剩余 ${data.remainingGB}GB · ${data.resetDaysLeft}天重置`;
+  let text = '';
+  if (daily) {
+    const prefix = daily.isTodayWarning ? '⚠️ ' : '';
+    text = `${prefix}今日 ${daily.todayGB}G · 剩余 ${data.remainingGB}G`;
+  } else {
+    text = `剩余 ${data.remainingGB}GB · ${data.resetDaysLeft}天重置`;
+  }
   const inlineText = widget.addText(text);
   inlineText.font = Font.systemFont(12);
 }
@@ -1422,9 +1590,10 @@ function renderSmallWidget(widget, data) {
   // 紧凑每日用量信息
   const daily = data.dailyStats;
   if (daily) {
-    const dailyText = widget.addText(`今日 ${daily.todayGB}G · 周期日均 ${daily.avgGB}G`);
-    dailyText.font = Font.systemFont(9);
-    dailyText.textColor = new Color('#8E8E93');
+    const isWarn = daily.isTodayWarning;
+    const dailyText = widget.addText(isWarn ? `⚠️ 今日已用 ${daily.todayGB}G (已超标)` : `今日 ${daily.todayGB}G · 周期日均 ${daily.avgGB}G`);
+    dailyText.font = isWarn ? Font.boldSystemFont(9) : Font.systemFont(9);
+    dailyText.textColor = isWarn ? new Color('#FF3B30') : new Color('#8E8E93');
   } else {
     const subText = widget.addText(`共 ${data.totalGB} GB · ${data.resetDaysLeft}天后重置`);
     subText.font = Font.systemFont(9);
