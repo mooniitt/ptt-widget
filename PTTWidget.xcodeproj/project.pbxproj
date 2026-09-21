@@ -1,0 +1,525 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		04611B1BB162EEB799BB332C /* DailyTrafficLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DDEC07D37A1CD345E37AF0 /* DailyTrafficLog.swift */; };
+		1210E5F517512195F2EFA75B /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694922DCE0D0A3D05280D949 /* SubscriptionService.swift */; };
+		160AC22C9EEC7E5785FA1E7C /* DailyTrafficLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DDEC07D37A1CD345E37AF0 /* DailyTrafficLog.swift */; };
+		1C27B20ABBA482E57E922D69 /* AccountTraffic.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30AD9ACDDAB8B3886046410 /* AccountTraffic.swift */; };
+		2023D4123AFDCD3B14FFB2AA /* MediumWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B8956EC9389048E005A91E /* MediumWidgetView.swift */; };
+		2026830D44511410559B59AF /* LargeWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 620EA22E1AAA8031DDA9F03E /* LargeWidgetView.swift */; };
+		234CAA283C2B3109214918E8 /* PTTApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC7BFFB61BBA5744BE9FE8A7 /* PTTApp.swift */; };
+		25B6FBE47FAF2923E192267C /* SwiftUIHeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5633DDB31FFB2B0C6F6B008B /* SwiftUIHeatmapView.swift */; };
+		284A2F0AEF27AE1647748B6D /* AccountTraffic.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30AD9ACDDAB8B3886046410 /* AccountTraffic.swift */; };
+		40B0DE66D17BB2DF1EB0487A /* StorageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF182C34CC579F3D52BD2A8 /* StorageManager.swift */; };
+		423033755AFE08346A6D7B01 /* StorageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF182C34CC579F3D52BD2A8 /* StorageManager.swift */; };
+		465A549E2F7AF06829936ECC /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = B212C0F429CD512FB9D3833B /* Config.swift */; };
+		4983DC3D431997DCD2DAAD8D /* SwiftUIHeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5633DDB31FFB2B0C6F6B008B /* SwiftUIHeatmapView.swift */; };
+		5607CB21281A1A0FF06E320B /* PTTWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF32503B803CDE29B60EEF05 /* PTTWidgetBundle.swift */; };
+		56AAD531E9715E9BCB4A61B8 /* PTTWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0EF356D1528D55621C70C998 /* PTTWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		ADA9ED7CC18AC7C860B6699C /* SmallWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5982CCEFEA9818AAC254F3F9 /* SmallWidgetView.swift */; };
+		B66F4AF467E3F43A187231A8 /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694922DCE0D0A3D05280D949 /* SubscriptionService.swift */; };
+		BB04640A70EAE840F0006C62 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DC523D245AB5B5FA6D8CAC4 /* ContentView.swift */; };
+		D02D8025981931A9B27FD6D9 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = B212C0F429CD512FB9D3833B /* Config.swift */; };
+		F0E96838236C3CA5D6949101 /* PTTWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 934A6FC8F74F6BD0E2CC908D /* PTTWidget.swift */; };
+		F5B139DC1571EF6362E80AD2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB65B37F60C54F4F8F9FC12 /* SettingsView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		22C812A5799F7F9C0A984390 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BC697322323C86C06359CFF8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C7D4B3BB5A6BBBA5A21030BD;
+			remoteInfo = PTTWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E65F81304F93BB836D2FB128 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				56AAD531E9715E9BCB4A61B8 /* PTTWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0EF356D1528D55621C70C998 /* PTTWidgetExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = PTTWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		37DDEC07D37A1CD345E37AF0 /* DailyTrafficLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyTrafficLog.swift; sourceTree = "<group>"; };
+		52B8956EC9389048E005A91E /* MediumWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediumWidgetView.swift; sourceTree = "<group>"; };
+		54039F50418EE6B1B8F62EAB /* PTTApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PTTApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5633DDB31FFB2B0C6F6B008B /* SwiftUIHeatmapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftUIHeatmapView.swift; sourceTree = "<group>"; };
+		5982CCEFEA9818AAC254F3F9 /* SmallWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallWidgetView.swift; sourceTree = "<group>"; };
+		620EA22E1AAA8031DDA9F03E /* LargeWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeWidgetView.swift; sourceTree = "<group>"; };
+		648110B52E3A945A029E6B84 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		694922DCE0D0A3D05280D949 /* SubscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionService.swift; sourceTree = "<group>"; };
+		6DC523D245AB5B5FA6D8CAC4 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		7DF182C34CC579F3D52BD2A8 /* StorageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageManager.swift; sourceTree = "<group>"; };
+		934A6FC8F74F6BD0E2CC908D /* PTTWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PTTWidget.swift; sourceTree = "<group>"; };
+		AC7BFFB61BBA5744BE9FE8A7 /* PTTApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PTTApp.swift; sourceTree = "<group>"; };
+		B212C0F429CD512FB9D3833B /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
+		B30AD9ACDDAB8B3886046410 /* AccountTraffic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountTraffic.swift; sourceTree = "<group>"; };
+		BF32503B803CDE29B60EEF05 /* PTTWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PTTWidgetBundle.swift; sourceTree = "<group>"; };
+		CBB65B37F60C54F4F8F9FC12 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		F6D81C3A636B09AD5C0F3E05 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		1295E1EE04BFB13423D36EF0 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				6DC523D245AB5B5FA6D8CAC4 /* ContentView.swift */,
+				CBB65B37F60C54F4F8F9FC12 /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		1A6D7D67C0A10CA6E76EAA05 = {
+			isa = PBXGroup;
+			children = (
+				CE89255F13B00A7DCA56FAB7 /* PTTApp */,
+				A40A485DAB8A423AC8FBF071 /* PTTWidget */,
+				4D356385E47D12668B00D325 /* Shared */,
+				797C87AFD3FBD82057F9DF8A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4D356385E47D12668B00D325 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				B212C0F429CD512FB9D3833B /* Config.swift */,
+				F949F2B32EEB5FAE70D0E40F /* Models */,
+				AC8E2F03EBE4D7D4CB874BCE /* Services */,
+				B3621E189C5EA9586F123D39 /* Views */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		797C87AFD3FBD82057F9DF8A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				54039F50418EE6B1B8F62EAB /* PTTApp.app */,
+				0EF356D1528D55621C70C998 /* PTTWidgetExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A40A485DAB8A423AC8FBF071 /* PTTWidget */ = {
+			isa = PBXGroup;
+			children = (
+				648110B52E3A945A029E6B84 /* Info.plist */,
+				934A6FC8F74F6BD0E2CC908D /* PTTWidget.swift */,
+				BF32503B803CDE29B60EEF05 /* PTTWidgetBundle.swift */,
+				F4614E91ACE9E492601D12B7 /* Views */,
+			);
+			path = PTTWidget;
+			sourceTree = "<group>";
+		};
+		AC8E2F03EBE4D7D4CB874BCE /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				7DF182C34CC579F3D52BD2A8 /* StorageManager.swift */,
+				694922DCE0D0A3D05280D949 /* SubscriptionService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		B3621E189C5EA9586F123D39 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				5633DDB31FFB2B0C6F6B008B /* SwiftUIHeatmapView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		CE89255F13B00A7DCA56FAB7 /* PTTApp */ = {
+			isa = PBXGroup;
+			children = (
+				F6D81C3A636B09AD5C0F3E05 /* Info.plist */,
+				AC7BFFB61BBA5744BE9FE8A7 /* PTTApp.swift */,
+				1295E1EE04BFB13423D36EF0 /* Views */,
+			);
+			path = PTTApp;
+			sourceTree = "<group>";
+		};
+		F4614E91ACE9E492601D12B7 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				620EA22E1AAA8031DDA9F03E /* LargeWidgetView.swift */,
+				52B8956EC9389048E005A91E /* MediumWidgetView.swift */,
+				5982CCEFEA9818AAC254F3F9 /* SmallWidgetView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		F949F2B32EEB5FAE70D0E40F /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				B30AD9ACDDAB8B3886046410 /* AccountTraffic.swift */,
+				37DDEC07D37A1CD345E37AF0 /* DailyTrafficLog.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C7D4B3BB5A6BBBA5A21030BD /* PTTWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FC0B94BD1E8171AE6C2D7BCA /* Build configuration list for PBXNativeTarget "PTTWidgetExtension" */;
+			buildPhases = (
+				A0DE67E1817E49549E097D04 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PTTWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = PTTWidgetExtension;
+			productReference = 0EF356D1528D55621C70C998 /* PTTWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		E4B7A560921BCFAD3DBFB6B2 /* PTTApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C4F601D065355E744A266A77 /* Build configuration list for PBXNativeTarget "PTTApp" */;
+			buildPhases = (
+				BB2EFA3095F213421A430D19 /* Sources */,
+				E65F81304F93BB836D2FB128 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2D73B8E60355DCF3D68AE354 /* PBXTargetDependency */,
+			);
+			name = PTTApp;
+			packageProductDependencies = (
+			);
+			productName = PTTApp;
+			productReference = 54039F50418EE6B1B8F62EAB /* PTTApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BC697322323C86C06359CFF8 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					C7D4B3BB5A6BBBA5A21030BD = {
+						DevelopmentTeam = "";
+					};
+					E4B7A560921BCFAD3DBFB6B2 = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 37136FA9A1AC012A2E214FB9 /* Build configuration list for PBXProject "PTTWidget" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 1A6D7D67C0A10CA6E76EAA05;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 797C87AFD3FBD82057F9DF8A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E4B7A560921BCFAD3DBFB6B2 /* PTTApp */,
+				C7D4B3BB5A6BBBA5A21030BD /* PTTWidgetExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A0DE67E1817E49549E097D04 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				284A2F0AEF27AE1647748B6D /* AccountTraffic.swift in Sources */,
+				465A549E2F7AF06829936ECC /* Config.swift in Sources */,
+				160AC22C9EEC7E5785FA1E7C /* DailyTrafficLog.swift in Sources */,
+				2026830D44511410559B59AF /* LargeWidgetView.swift in Sources */,
+				2023D4123AFDCD3B14FFB2AA /* MediumWidgetView.swift in Sources */,
+				F0E96838236C3CA5D6949101 /* PTTWidget.swift in Sources */,
+				5607CB21281A1A0FF06E320B /* PTTWidgetBundle.swift in Sources */,
+				ADA9ED7CC18AC7C860B6699C /* SmallWidgetView.swift in Sources */,
+				40B0DE66D17BB2DF1EB0487A /* StorageManager.swift in Sources */,
+				1210E5F517512195F2EFA75B /* SubscriptionService.swift in Sources */,
+				4983DC3D431997DCD2DAAD8D /* SwiftUIHeatmapView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BB2EFA3095F213421A430D19 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1C27B20ABBA482E57E922D69 /* AccountTraffic.swift in Sources */,
+				D02D8025981931A9B27FD6D9 /* Config.swift in Sources */,
+				BB04640A70EAE840F0006C62 /* ContentView.swift in Sources */,
+				04611B1BB162EEB799BB332C /* DailyTrafficLog.swift in Sources */,
+				234CAA283C2B3109214918E8 /* PTTApp.swift in Sources */,
+				F5B139DC1571EF6362E80AD2 /* SettingsView.swift in Sources */,
+				423033755AFE08346A6D7B01 /* StorageManager.swift in Sources */,
+				B66F4AF467E3F43A187231A8 /* SubscriptionService.swift in Sources */,
+				25B6FBE47FAF2923E192267C /* SwiftUIHeatmapView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2D73B8E60355DCF3D68AE354 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C7D4B3BB5A6BBBA5A21030BD /* PTTWidgetExtension */;
+			targetProxy = 22C812A5799F7F9C0A984390 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		23B5D6CDF5E90B2F5651C5F4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PTTWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mooniitt.pttwidget.extension;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		2A49E578BD0051200F72F30E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PTTWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mooniitt.pttwidget.extension;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		3B266225BC080191F05E1CE0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PTTApp/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mooniitt.pttwidget;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		51D4D98309ADDDF09649EAC8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		AFB8D2F310742C288151C627 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PTTApp/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mooniitt.pttwidget;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CA282CD5B47D9ABA90A89C35 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		37136FA9A1AC012A2E214FB9 /* Build configuration list for PBXProject "PTTWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CA282CD5B47D9ABA90A89C35 /* Debug */,
+				51D4D98309ADDDF09649EAC8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C4F601D065355E744A266A77 /* Build configuration list for PBXNativeTarget "PTTApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AFB8D2F310742C288151C627 /* Debug */,
+				3B266225BC080191F05E1CE0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FC0B94BD1E8171AE6C2D7BCA /* Build configuration list for PBXNativeTarget "PTTWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				23B5D6CDF5E90B2F5651C5F4 /* Debug */,
+				2A49E578BD0051200F72F30E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = BC697322323C86C06359CFF8 /* Project object */;
+}
