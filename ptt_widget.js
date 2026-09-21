@@ -6,30 +6,29 @@
 
 // ================= 辅助函数：Token 解析 =================
 function resolveActiveTokens() {
+  const DEFAULT_TOKENS = [
+    'f4XTTjtgVDFAUV79FgDp7i2hEF2w7sUvpGiNmeZkce4f55bb', // 账号 1 (200G)
+    'ltSOzTIW6LqUNtWGt2Tl89mCkRy53iMUUMvedXtY062087e9'  // 账号 2 (300G)
+  ];
+
   const param = (typeof args !== 'undefined' && args.widgetParameter) ? args.widgetParameter.trim() : '';
   const globalTokens = (typeof globalThis !== 'undefined' && Array.isArray(globalThis.__LOCAL_TRAFFIC_TOKENS__) && globalThis.__LOCAL_TRAFFIC_TOKENS__.length > 0)
     ? globalThis.__LOCAL_TRAFFIC_TOKENS__
-    : ((typeof globalThis !== 'undefined' && globalThis.__LOCAL_TRAFFIC_TOKEN__) ? [globalThis.__LOCAL_TRAFFIC_TOKEN__] : []);
+    : DEFAULT_TOKENS;
 
-  if (param) {
-    if (param === '1' || param.toLowerCase() === 'acc1') {
-      return globalTokens.slice(0, 1);
-    } 
-    if (param === '2' || param.toLowerCase() === 'acc2') {
-      return globalTokens.length > 1 ? [globalTokens[1]] : globalTokens.slice(0, 1);
-    }
-    if (param.includes(',')) {
-      return param.split(',').map(s => s.trim()).filter(Boolean);
-    }
-    if (param.length > 10) {
-      return [param];
-    }
+  // 仅在明确传入 1 或 2 时切换为单账号视图
+  if (param === '1' || param.toLowerCase() === 'acc1') {
+    return globalTokens.slice(0, 1);
+  } 
+  if (param === '2' || param.toLowerCase() === 'acc2') {
+    return globalTokens.length > 1 ? [globalTokens[1]] : globalTokens.slice(0, 1);
+  }
+  if (param.includes(',')) {
+    return param.split(',').map(s => s.trim()).filter(Boolean);
   }
 
-  if (globalTokens.length > 0) {
-    return globalTokens;
-  }
-  return [];
+  // 默认无论如何直接返回全部双账号！
+  return (globalTokens && globalTokens.length >= 2) ? globalTokens : DEFAULT_TOKENS;
 }
 
 // ================= 配置区域 =================
