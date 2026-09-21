@@ -25,7 +25,12 @@ public final class StorageManager: @unchecked Sendable {
     // MARK: - Token 管理
     
     public var savedTokens: [String] {
-        return userDefaults.stringArray(forKey: tokensKey) ?? []
+        let stored = userDefaults.stringArray(forKey: tokensKey) ?? []
+        if stored.isEmpty {
+            saveTokens(AppConfig.defaultTokens)
+            return AppConfig.defaultTokens
+        }
+        return stored
     }
     
     public func saveTokens(_ tokens: [String]) {

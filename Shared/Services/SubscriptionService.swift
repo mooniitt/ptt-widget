@@ -75,14 +75,15 @@ public final class SubscriptionService: @unchecked Sendable {
     // MARK: - 底层 HTTP 请求
     
     private func fetchSubscribeData(token: String) async throws -> SubscribeData {
-        guard var components = URLComponents(string: AppConfig.subscribeApiUrl) else {
+        guard let url = URL(string: "\(AppConfig.subscribeApiUrl)?t=\(Int(Date().timeIntervalSince1970 * 1000))") else {
             throw URLError(.badURL)
         }
-        components.queryItems = [URLQueryItem(name: "token", value: token)]
-        guard let url = components.url else { throw URLError(.badURL) }
         
         var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "authorization")
+        request.setValue("https://ptt.ixlmo.com/", forHTTPHeaderField: "referer")
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X)", forHTTPHeaderField: "user-agent")
         
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
@@ -98,14 +99,15 @@ public final class SubscriptionService: @unchecked Sendable {
     }
     
     private func fetchTrafficLogs(token: String) async throws -> [RawTrafficLogItem] {
-        guard var components = URLComponents(string: AppConfig.trafficLogApiUrl) else {
+        guard let url = URL(string: "\(AppConfig.trafficLogApiUrl)?t=\(Int(Date().timeIntervalSince1970 * 1000))") else {
             return []
         }
-        components.queryItems = [URLQueryItem(name: "token", value: token)]
-        guard let url = components.url else { return [] }
         
         var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "authorization")
+        request.setValue("https://ptt.ixlmo.com/", forHTTPHeaderField: "referer")
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X)", forHTTPHeaderField: "user-agent")
         
         guard let (data, response) = try? await session.data(for: request),
               let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
