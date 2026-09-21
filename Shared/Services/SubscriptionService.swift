@@ -142,7 +142,7 @@ public final class SubscriptionService: @unchecked Sendable {
         let expireDateStr = formatExpireDate(timestamp: sub.expired_at)
         
         let isLow = remainingGB < 5.0 || usedPercent > 90
-        let dailyStats = generateDailyStats(logs: logs, resetDay: sub.reset_day)
+        let dailyStats = generateDailyStats(logs: logs, sub: sub)
         
         return AccountTraffic(
             token: token,
@@ -203,99 +203,171 @@ public final class SubscriptionService: @unchecked Sendable {
         }
     }
     
-    /// 构建周期热力图数据
-    private func generateDailyStats(logs: [RawTrafficLogItem], resetDay: Int?) -> DailyStats {
-        let calendar = Calendar.current
+    /// 构建周期热力图数据 (100% 完整复刻原 JS parseDailyStats 逻辑：周期对齐、缺失平摊、防稀释色阶)
+    private func generateDailyStats(logs: [RawTrafficLogItem], sub: SubscribeData) -> DailyStats {
         let now = Date()
-        let todayStr = formatDate(now)
+        let calendar = Calendar.current
+        let GB: Double = 1024.0 * 1024.0 * 1024.0
+        let totalUsedBytes = Double((sub.u ?? 0) + (sub.d ?? 0))
         
-        // 聚合日志：按 "YYYY-MM-DD" 汇总流量
-        var dateTrafficMap: [String: Double] = [:]
-        for item in logs {
-            let recordDate = Date(timeIntervalSince1970: TimeInterval(item.record_at))
-            let key = formatDate(recordDate)
-            let gb = bytesToGB(item.u + item.d)
-            dateTrafficMap[key, default: 0.0] += gb
+        // 1. 确定计费周期起止时间（以套餐实际重置日期 next_reset_at 为准，对齐 JS）
+        var startDate: Date
+        var endDate: Date
+        
+        if let nextReset = sub.next_reset_at, nextReset > 0 {
+            var end = Date(timeIntervalSince1970: TimeInterval(nextReset))
+            var start = calendar.date(byAdding: .month, value: -1, to: end) ?? end.addingTimeInterval(-30 * 86400)
+            while start > now {
+                end = start
+                start = calendar.date(byAdding: .month, value: -1, to: end) ?? end.addingTimeInterval(-30 * 86400)
+            }
+            startDate = calendar.startOfDay(for: start)
+            endDate = calendar.startOfDay(for: end)
+        } else {
+            // 降级为当前自然月
+            let comp = calendar.dateComponents([.year, .month], from: now)
+            startDate = calendar.date(from: comp) ?? now
+            endDate = calendar.date(byAdding: .month, value: 1, to: startDate) ?? now
         }
         
-        // 计算周期范围：本月第 1 天到最后 1 天
-        let range = calendar.range(of: .day, in: .month, for: now) ?? 1..<31
-        let totalDays = range.count
+        // 周期标签与范围描述（如 "08/26 - 09/26"）
+        let mFormatter = DateFormatter()
+        mFormatter.dateFormat = "MM/dd"
+        let cycleLabel = "\(mFormatter.string(from: startDate)) - \(mFormatter.string(from: endDate))"
         
-        var components = calendar.dateComponents([.year, .month], from: now)
-        components.day = 1
-        let firstDate = calendar.date(from: components) ?? now
-        let firstDayOfWeek = calendar.component(.weekday, from: firstDate) // 1 是周日
+        // 2. 映射每日流量明细日志
+        var logMap: [String: Double] = [:]
+        var logSumBytes: Double = 0.0
+        let keyFormatter = DateFormatter()
+        keyFormatter.dateFormat = "yyyy-MM-dd"
         
-        let monthFormatter = DateFormatter()
-        monthFormatter.dateFormat = "MM/01 - MM/\(totalDays)"
-        let cycleLabel = monthFormatter.string(from: now)
+        for item in logs {
+            guard item.record_at > 0 else { continue }
+            let itemDate = Date(timeIntervalSince1970: TimeInterval(item.record_at))
+            let key = keyFormatter.string(from: itemDate)
+            let bytes = Double((item.u) + (item.d))
+            logMap[key, default: 0.0] += bytes
+            logSumBytes += bytes
+        }
         
-        var maxTraffic: Double = 0.0
-        var totalCycleTraffic: Double = 0.0
-        var recordedDaysCount = 0
+        // 3. 构建周期内全部天数序列（从 startDate 到 endDate 前一天）
+        var dayItems: [(date: Date, key: String, dayNum: Int, isToday: Bool, isFuture: Bool)] = []
+        var cur = startDate
+        let todayStr = keyFormatter.string(from: now)
+        var missingPastDays: [String] = []
+        var pastDaysCount = 0
         
-        var dayRecords: [(dateStr: String, dayNum: Int, traffic: Double, isToday: Bool, isFuture: Bool)] = []
-        let currentDayNum = calendar.component(.day, from: now)
-        
-        for day in 1...totalDays {
-            components.day = day
-            let cellDate = calendar.date(from: components) ?? now
-            let dStr = formatDate(cellDate)
-            let traffic = dateTrafficMap[dStr] ?? 0.0
-            let isToday = (day == currentDayNum)
-            let isFuture = (day > currentDayNum)
+        while cur < endDate {
+            let key = keyFormatter.string(from: cur)
+            let isToday = (key == todayStr)
+            let isFuture = (cur > now && !isToday)
+            let dayNum = calendar.component(.day, from: cur)
             
             if !isFuture {
-                totalCycleTraffic += traffic
-                recordedDaysCount += 1
-                if traffic > maxTraffic {
-                    maxTraffic = traffic
+                pastDaysCount += 1
+                if logMap[key] == nil {
+                    missingPastDays.append(key)
                 }
             }
             
-            dayRecords.append((dStr, day, traffic, isToday, isFuture))
+            dayItems.append((date: cur, key: key, dayNum: dayNum, isToday: isToday, isFuture: isFuture))
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cur) else { break }
+            cur = next
         }
         
-        let todayGB = dateTrafficMap[todayStr] ?? 0.0
-        let avgGB = recordedDaysCount > 0 ? (totalCycleTraffic / Double(recordedDaysCount)) : 0.0
-        let isTodayWarning = todayGB >= AppConfig.dailyWarningThresholdGB
-        let isMaxWarning = maxTraffic >= AppConfig.dailyWarningThresholdGB
-        
-        // 计算色阶
-        var cells: [HeatmapCell] = []
-        for rec in dayRecords {
-            var level = 0
-            if !rec.isFuture && rec.traffic > 0 {
-                if maxTraffic > 0 {
-                    let ratio = rec.traffic / maxTraffic
-                    if ratio <= 0.25 { level = 1 }
-                    else if ratio <= 0.50 { level = 2 }
-                    else if ratio <= 0.75 { level = 3 }
-                    else { level = 4 }
+        // 4. 周期用量对齐：将总已用与日志累加进行精准对齐与自然加权平摊 (对齐 JS)
+        let diffBytes = max(0.0, totalUsedBytes - logSumBytes)
+        var fillMap: [String: Double] = [:]
+        if !missingPastDays.isEmpty && diffBytes > 0 {
+            let baseBytes = diffBytes / Double(missingPastDays.count)
+            var assigned: Double = 0.0
+            let weights: [Double] = [0.88, 1.06, 0.93, 1.12, 0.95, 1.08, 1.00]
+            for (idx, k) in missingPastDays.enumerated() {
+                if idx == missingPastDays.count - 1 {
+                    fillMap[k] = max(0.0, diffBytes - assigned)
                 } else {
-                    level = 1
+                    let w = weights[idx % weights.count]
+                    let val = round(baseBytes * w)
+                    fillMap[k] = val
+                    assigned += val
                 }
             }
-            let isCellWarning = rec.traffic >= AppConfig.dailyWarningThresholdGB
+        }
+        
+        var maxBytes: Double = 0.0
+        var todayBytes: Double = 0.0
+        var recordedDays: [(date: Date, key: String, dayNum: Int, bytes: Double, gb: Double, isToday: Bool, isFuture: Bool)] = []
+        
+        for item in dayItems {
+            var bytes: Double = 0.0
+            if !item.isFuture {
+                if let b = logMap[item.key] {
+                    bytes = b
+                } else if let b = fillMap[item.key] {
+                    bytes = b
+                }
+                if bytes > maxBytes {
+                    maxBytes = bytes
+                }
+                if item.isToday {
+                    todayBytes = bytes
+                }
+            }
+            let gb = bytes / GB
+            recordedDays.append((date: item.date, key: item.key, dayNum: item.dayNum, bytes: bytes, gb: gb, isToday: item.isToday, isFuture: item.isFuture))
+        }
+        
+        let finalCycleTotalGB = totalUsedBytes / GB
+        let avgGB = pastDaysCount > 0 ? (totalUsedBytes / GB / Double(pastDaysCount)) : 0.0
+        let maxGB = maxBytes / GB
+        let todayGB = todayBytes / GB
+        
+        // 5. 流量预警判定与标记 (支持单日预警阈值，如超过 10GB)
+        let warnThreshold = AppConfig.dailyWarningThresholdGB
+        let isTodayWarning = warnThreshold > 0 && todayGB >= warnThreshold
+        let isMaxWarning = warnThreshold > 0 && maxGB >= warnThreshold
+        
+        // 6. GitHub 贡献图精准比例色阶与防稀释基准标尺计算 (解决极端超量日导致常规天色阶全部退化为 Level 1 的关键逻辑)
+        let normalMaxGB = warnThreshold > 0 ? min(maxGB, warnThreshold) : maxGB
+        let refScale = max(normalMaxGB, avgGB * 1.3, 1.0)
+        
+        var cells: [HeatmapCell] = []
+        for item in recordedDays {
+            var level = 0
+            if !item.isFuture && item.gb > 0 {
+                let ratio = item.gb / refScale
+                if ratio <= 0.25 {
+                    level = 1
+                } else if ratio <= 0.50 {
+                    level = 2
+                } else if ratio <= 0.75 {
+                    level = 3
+                } else {
+                    level = 4
+                }
+            }
+            let isCellWarning = (!item.isFuture && warnThreshold > 0 && item.gb >= warnThreshold)
             cells.append(HeatmapCell(
-                dateStr: rec.dateStr,
-                dayNumber: rec.dayNum,
-                trafficGB: Double(round(rec.traffic * 100) / 100),
+                dateStr: item.key,
+                dayNumber: item.dayNum,
+                trafficGB: Double(round(item.gb * 100) / 100),
                 level: level,
-                isToday: rec.isToday,
+                isToday: item.isToday,
                 isWarning: isCellWarning,
-                isFuture: rec.isFuture
+                isFuture: item.isFuture
             ))
         }
+        
+        let firstDate = dayItems.first?.date ?? now
+        let firstDayOfWeek = calendar.component(.weekday, from: firstDate) // 1 是周日
         
         return DailyStats(
             cycleRangeLabel: cycleLabel,
             firstDayOfWeek: firstDayOfWeek,
-            totalDaysInCycle: totalDays,
+            totalDaysInCycle: dayItems.count,
             todayGB: Double(round(todayGB * 100) / 100),
-            cycleTotalGB: Double(round(totalCycleTraffic * 100) / 100),
-            maxGB: Double(round(maxTraffic * 100) / 100),
+            cycleTotalGB: Double(round(finalCycleTotalGB * 100) / 100),
+            maxGB: Double(round(maxGB * 100) / 100),
             avgGB: Double(round(avgGB * 100) / 100),
             isTodayWarning: isTodayWarning,
             isMaxWarning: isMaxWarning,
