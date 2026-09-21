@@ -1205,11 +1205,9 @@ function renderStatusBadge(stack, data, isSmall = false) {
 
 // ================= 双账号专属组件渲染 =================
 
-// 双账号 - 中号小组件 (Medium 紧凑双账号摘要 + 活跃账号每日用量图表)
+// 双账号 - 中号小组件 (Medium 紧凑双账号摘要 + 双账号每日用量图表)
 function renderDualMediumWidget(widget, accounts, summary) {
-  const activeAcc = summary.activeAccount || accounts[0];
-
-  // 1. 顶部行：双账号胶囊
+  // 1. 顶部行：双账号胶囊 + 总余量
   const headerStack = widget.addStack();
   headerStack.layoutHorizontally();
   headerStack.centerAlignContent();
@@ -1241,7 +1239,6 @@ function renderDualMediumWidget(widget, accounts, summary) {
 
   headerStack.addSpacer();
 
-  // 总余量
   const totalT = headerStack.addText(`共${summary.totalRemainingGB}G`);
   totalT.font = Font.boldSystemFont(10);
   totalT.textColor = new Color('#10B981');
@@ -1274,24 +1271,38 @@ function renderDualMediumWidget(widget, accounts, summary) {
 
   widget.addSpacer(3);
 
-  // 3. 活跃账号每日用量图表
-  const chartW = getWidgetChartWidth('medium');
+  // 3. 双账号每日用量图表 (左右并列)
+  const fullW = getWidgetChartWidth('medium');
+  const halfW = Math.floor((fullW - 8) / 2); // 中间留 8pt 间距
   const chartH = getWidgetChartHeight('medium') - 6;
-  if (activeAcc.dailyStats && activeAcc.dailyStats.days && activeAcc.dailyStats.days.length > 0) {
-    const chartImg = drawDailyTrafficChart(activeAcc.dailyStats, chartW, chartH, CONFIG.chart_type);
-    const chartWidgetImg = widget.addImage(chartImg);
-    chartWidgetImg.imageSize = new Size(chartW, chartH);
-    chartWidgetImg.resizable = true;
-  } else {
-    const progressImg = drawProgressBar(summary.overallUsedPercent, chartW, 10);
-    const progressWidgetImg = widget.addImage(progressImg);
-    progressWidgetImg.imageSize = new Size(chartW, 10);
-    progressWidgetImg.resizable = true;
+
+  const chartsRow = widget.addStack();
+  chartsRow.layoutHorizontally();
+  chartsRow.spacing = 8;
+
+  for (let i = 0; i < 2; i++) {
+    const acc = accounts[i];
+    if (!acc) continue;
+
+    const col = chartsRow.addStack();
+    col.layoutVertically();
+
+    if (acc.dailyStats && acc.dailyStats.days && acc.dailyStats.days.length > 0) {
+      const chartImg = drawDailyTrafficChart(acc.dailyStats, halfW, chartH, CONFIG.chart_type);
+      const chartWidgetImg = col.addImage(chartImg);
+      chartWidgetImg.imageSize = new Size(halfW, chartH);
+      chartWidgetImg.resizable = true;
+    } else {
+      const pbImg = drawProgressBar(acc.usedPercent || 0, halfW, 8);
+      const pbWidgetImg = col.addImage(pbImg);
+      pbWidgetImg.imageSize = new Size(halfW, 8);
+      pbWidgetImg.resizable = true;
+    }
   }
 
   widget.addSpacer(3);
 
-  // 4. 底部：仅重置天数
+  // 4. 底部：重置天数
   const footerStack = widget.addStack();
   footerStack.layoutHorizontally();
   footerStack.centerAlignContent();
