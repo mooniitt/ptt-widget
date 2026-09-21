@@ -103,7 +103,7 @@ public struct PTTWidgetEntryView: View {
             }
         }
         .containerBackground(for: .widget) {
-            Color(uiColor: .systemBackground)
+            TrafficTheme.widgetBackground
         }
     }
 }

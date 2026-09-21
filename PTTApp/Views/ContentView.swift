@@ -1,7 +1,7 @@
 import SwiftUI
 import WidgetKit
 
-/// iOS 主 App 流量仪表盘视图
+/// iOS 主 App 流量仪表盘视图 - 统一采用原生 TrafficTheme 设计系统
 public struct ContentView: View {
     @State private var accounts: [AccountTraffic] = []
     @State private var isLoading: Bool = false
@@ -14,6 +14,11 @@ public struct ContentView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    // 同步状态异常横幅 (在有旧缓存时若后台同步报错展示)
+                    if let err = errorMessage, !accounts.isEmpty {
+                        errorBannerView(error: err)
+                    }
+                    
                     if isLoading && accounts.isEmpty {
                         ProgressView("正在同步订阅数据...")
                             .padding(.top, 40)
@@ -71,32 +76,23 @@ public struct ContentView: View {
     
     @ViewBuilder
     private func accountDetailCard(acc: AccountTraffic) -> some View {
+        let statusColor = TrafficTheme.statusColor(remainingGB: acc.remainingGB, usedPercent: acc.usedPercent)
+        
         VStack(alignment: .leading, spacing: 12) {
             // 卡片头部
             HStack {
                 HStack(spacing: 6) {
-                    Text(acc.accountTag)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(Color.blue)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    TrafficTag(text: acc.accountTag, fontSize: 11, hPad: 6, vPad: 2.5, cornerRadius: 4.0)
                     
                     Text(acc.planName)
                         .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(TrafficTheme.primaryText)
                         .lineLimit(1)
                 }
                 
                 Spacer()
                 
-                Text("\(acc.resetDaysLeft) 天后重置")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.blue)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.blue.opacity(0.1))
-                    .clipShape(Capsule())
+                TrafficResetBadge(text: "\(acc.resetDaysLeft) 天后重置", fontSize: 11, hPad: 8, vPad: 3, cornerRadius: 6.0)
             }
             
             Divider()
@@ -106,14 +102,14 @@ public struct ContentView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("剩余可用")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(TrafficTheme.secondaryText)
                     HStack(spacing: 2) {
                         Text("\(acc.remainingGB, specifier: "%.2f")")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundStyle(acc.isWarning ? .red : .green)
+                            .foregroundStyle(statusColor)
                         Text("GB")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(acc.isWarning ? .red : .green)
+                            .foregroundStyle(statusColor)
                     }
                 }
                 
@@ -124,27 +120,12 @@ public struct ContentView: View {
                         .font(.system(size: 12, weight: .medium))
                     Text("使用率: \(acc.usedPercent)% · 到期: \(acc.expireDateStr)")
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(TrafficTheme.secondaryText)
                 }
             }
             
-            // 渐变进度条
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color(uiColor: .systemGray5))
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: acc.isWarning ? [.orange, .red] : [.green, .mint],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: geo.size.width * CGFloat(min(1.0, Double(acc.usedPercent) / 100.0)))
-                }
-            }
-            .frame(height: 7)
+            // 细胶囊进度条
+            TrafficProgressBar(percent: acc.usedPercent, height: 7.0, customColor: statusColor)
             
             // 周期热力图板块
             if let daily = acc.dailyStats {
@@ -152,18 +133,18 @@ public struct ContentView: View {
                     HStack {
                         Label("周期每日用量分布", systemImage: "calendar")
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(TrafficTheme.secondaryText)
                         Spacer()
                         Text("今日已用: \(daily.todayGB, specifier: "%.2f") GB")
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(daily.isTodayWarning ? .red : .secondary)
+                            .foregroundStyle(daily.isTodayWarning ? TrafficTheme.trafficRed : TrafficTheme.secondaryText)
                     }
                     
                     SwiftUIHeatmapView(stats: daily, compact: false, cellSize: 13.0, cellGap: 3.5)
                         .padding(.vertical, 4)
                 }
                 .padding(10)
-                .background(Color(uiColor: .tertiarySystemGroupedBackground))
+                .background(TrafficTheme.cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
@@ -173,41 +154,89 @@ public struct ContentView: View {
         .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
     }
     
-    // MARK: - 辅助视图
+    // MARK: - 辅助与提示视图
     
-    private var emptyStateView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-            Text("暂未获取到订阅数据")
-                .font(.system(size: 16, weight: .bold))
-            Text("请点击右上角设置，检查并添加你的订阅 Token。")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button("前往配置 Token") {
+    private func errorBannerView(error: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(TrafficTheme.trafficOrange)
+            Text("同步提示: \(error)")
+                .font(.system(size: 12))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Spacer()
+            Button("更新") {
                 showSettings = true
             }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 8)
+            .font(.system(size: 12, weight: .bold))
         }
-        .padding(32)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(TrafficTheme.trafficOrange.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+    
+    private var emptyStateView: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "exclamationmark.shield.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(TrafficTheme.trafficOrange)
+            
+            Text("无法获取订阅数据")
+                .font(.system(size: 17, weight: .bold))
+            
+            if let err = errorMessage {
+                Text(err.contains("未登录") ? "内置的订阅 Token 已过期或失效（服务端提示：未登录或登陆已过期）。\n请在 PTT 官网复制最新的订阅链接粘贴到 App 中。" : "错误详情: \(err)")
+                    .font(.system(size: 13))
+                    .foregroundStyle(TrafficTheme.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+            } else {
+                Text("请点击下方按钮，添加您的 PTT 订阅链接或 Token。")
+                    .font(.system(size: 13))
+                    .foregroundStyle(TrafficTheme.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Button {
+                showSettings = true
+            } label: {
+                HStack {
+                    Image(systemName: "gearshape.fill")
+                    Text("前往配置订阅链接 / Token")
+                }
+                .font(.system(size: 14, weight: .bold))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 4)
+            
+            Text("💡 提示：在机场官网复制完整的订阅链接直接粘贴即可，系统会自动提取 Token。")
+                .font(.system(size: 11))
+                .foregroundStyle(TrafficTheme.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.top, 8)
+        }
+        .padding(28)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
     }
     
     private var footerView: some View {
         HStack {
             Text("最近同步: \(Date(), style: .time)")
                 .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(TrafficTheme.secondaryText)
             Spacer()
             HStack(spacing: 4) {
                 Circle()
-                    .fill(Color.green)
+                    .fill(TrafficTheme.trafficGreen)
                     .frame(width: 6, height: 6)
                 Text("桌面小组件已就绪")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(TrafficTheme.secondaryText)
             }
         }
         .padding(.horizontal, 4)
@@ -220,6 +249,7 @@ public struct ContentView: View {
         isLoading = true
         let newAccounts = await SubscriptionService.shared.fetchAllAccounts()
         accounts = newAccounts
+        errorMessage = SubscriptionService.shared.lastError
         WidgetCenter.shared.reloadAllTimelines()
         isLoading = false
     }

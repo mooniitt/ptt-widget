@@ -45,9 +45,9 @@ public struct SettingsView: View {
                 }
                 
                 // Section 2: 添加新 Token
-                Section("添加新 Token") {
+                Section {
                     HStack {
-                        TextField("粘贴或输入 48 位 Token", text: $newTokenText)
+                        TextField("粘贴完整订阅链接或 Token", text: $newTokenText)
                             .font(.system(size: 13, design: .monospaced))
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
@@ -83,6 +83,10 @@ public struct SettingsView: View {
                         }
                         .disabled(newTokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
+                } header: {
+                    Text("添加新 Token")
+                } footer: {
+                    Text("💡 提示：支持直接粘贴机场完整的订阅链接（包含 token=xxx），系统将自动精准识别并提取。")
                 }
                 
                 // Section 3: 默认配置重置
@@ -117,11 +121,34 @@ public struct SettingsView: View {
         }
     }
     
+    private func parseToken(from input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // 1. 智能匹配包含 token= 的情况 (无论是否标准 URL)
+        if let range = trimmed.range(of: "token=", options: .caseInsensitive) {
+            let after = String(trimmed[range.upperBound...])
+            let tokenPrefix = after.prefix { $0 != "&" && !$0.isWhitespace && $0 != "#" }
+            if !tokenPrefix.isEmpty {
+                return String(tokenPrefix)
+            }
+        }
+        
+        // 2. 匹配 URL 最后路径段为长 hash 的情况
+        if let url = URL(string: trimmed) {
+            let lastSegment = url.lastPathComponent
+            if lastSegment.count >= 24 && !lastSegment.contains(".") {
+                return lastSegment
+            }
+        }
+        
+        return trimmed
+    }
+    
     private func addToken() {
-        let trimmed = newTokenText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        if !tokens.contains(trimmed) {
-            tokens.append(trimmed)
+        let extracted = parseToken(from: newTokenText)
+        guard !extracted.isEmpty else { return }
+        if !tokens.contains(extracted) {
+            tokens.append(extracted)
             StorageManager.shared.saveTokens(tokens)
             WidgetCenter.shared.reloadAllTimelines()
         }

@@ -9,8 +9,10 @@
 /* Begin PBXBuildFile section */
 		04611B1BB162EEB799BB332C /* DailyTrafficLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DDEC07D37A1CD345E37AF0 /* DailyTrafficLog.swift */; };
 		1210E5F517512195F2EFA75B /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694922DCE0D0A3D05280D949 /* SubscriptionService.swift */; };
+		152472D892C1D857BF292E04 /* TrafficTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAA68B58C89A84A25977BD16 /* TrafficTheme.swift */; };
 		160AC22C9EEC7E5785FA1E7C /* DailyTrafficLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DDEC07D37A1CD345E37AF0 /* DailyTrafficLog.swift */; };
 		1C27B20ABBA482E57E922D69 /* AccountTraffic.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30AD9ACDDAB8B3886046410 /* AccountTraffic.swift */; };
+		1C3CDFAAA1FBB2D070BE2C4E /* TrafficTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAA68B58C89A84A25977BD16 /* TrafficTheme.swift */; };
 		2023D4123AFDCD3B14FFB2AA /* MediumWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B8956EC9389048E005A91E /* MediumWidgetView.swift */; };
 		2026830D44511410559B59AF /* LargeWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 620EA22E1AAA8031DDA9F03E /* LargeWidgetView.swift */; };
 		234CAA283C2B3109214918E8 /* PTTApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC7BFFB61BBA5744BE9FE8A7 /* PTTApp.swift */; };
@@ -71,6 +73,7 @@
 		B212C0F429CD512FB9D3833B /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
 		B30AD9ACDDAB8B3886046410 /* AccountTraffic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountTraffic.swift; sourceTree = "<group>"; };
 		BF32503B803CDE29B60EEF05 /* PTTWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PTTWidgetBundle.swift; sourceTree = "<group>"; };
+		CAA68B58C89A84A25977BD16 /* TrafficTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficTheme.swift; sourceTree = "<group>"; };
 		CBB65B37F60C54F4F8F9FC12 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F6D81C3A636B09AD5C0F3E05 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -99,6 +102,7 @@
 			isa = PBXGroup;
 			children = (
 				B212C0F429CD512FB9D3833B /* Config.swift */,
+				9F18B69D7BDA12965354D42B /* Design */,
 				F949F2B32EEB5FAE70D0E40F /* Models */,
 				AC8E2F03EBE4D7D4CB874BCE /* Services */,
 				B3621E189C5EA9586F123D39 /* Views */,
@@ -113,6 +117,14 @@
 				0EF356D1528D55621C70C998 /* PTTWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		9F18B69D7BDA12965354D42B /* Design */ = {
+			isa = PBXGroup;
+			children = (
+				CAA68B58C89A84A25977BD16 /* TrafficTheme.swift */,
+			);
+			path = Design;
 			sourceTree = "<group>";
 		};
 		A40A485DAB8A423AC8FBF071 /* PTTWidget */ = {
@@ -221,9 +233,11 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					C7D4B3BB5A6BBBA5A21030BD = {
+						DevelopmentTeam = K6C52A8ZYD;
 						ProvisioningStyle = Automatic;
 					};
 					E4B7A560921BCFAD3DBFB6B2 = {
+						DevelopmentTeam = K6C52A8ZYD;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -264,6 +278,7 @@
 				40B0DE66D17BB2DF1EB0487A /* StorageManager.swift in Sources */,
 				1210E5F517512195F2EFA75B /* SubscriptionService.swift in Sources */,
 				4983DC3D431997DCD2DAAD8D /* SwiftUIHeatmapView.swift in Sources */,
+				1C3CDFAAA1FBB2D070BE2C4E /* TrafficTheme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -280,6 +295,7 @@
 				423033755AFE08346A6D7B01 /* StorageManager.swift in Sources */,
 				B66F4AF467E3F43A187231A8 /* SubscriptionService.swift in Sources */,
 				25B6FBE47FAF2923E192267C /* SwiftUIHeatmapView.swift in Sources */,
+				152472D892C1D857BF292E04 /* TrafficTheme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -385,6 +401,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = K6C52A8ZYD;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -461,6 +478,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = K6C52A8ZYD;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;

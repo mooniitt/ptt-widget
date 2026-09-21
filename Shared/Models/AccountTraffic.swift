@@ -57,6 +57,8 @@ public struct AccountTraffic: Identifiable, Codable, Hashable {
 // MARK: - 原始 API 解析模型
 
 public struct SubscribeApiResponse: Codable {
+    public let status: String?
+    public let message: String?
     public let data: SubscribeData?
 }
 

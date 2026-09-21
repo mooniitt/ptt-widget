@@ -13,26 +13,39 @@ public final class SubscriptionService: @unchecked Sendable {
         self.session = URLSession(configuration: config)
     }
     
+    public var lastError: String?
+    
     /// 获取所有指定 Tokens 的账号数据（并发拉取）
     public func fetchAllAccounts(tokens: [String]? = nil) async -> [AccountTraffic] {
+        lastError = nil
         let targetTokens = (tokens != nil && !tokens!.isEmpty) ? tokens! : StorageManager.shared.savedTokens
         guard !targetTokens.isEmpty else {
+            lastError = "未配置任何 Token"
             return StorageManager.shared.loadAccountsCache()
         }
         
         var results: [AccountTraffic] = []
-        await withTaskGroup(of: (Int, AccountTraffic?).self) { group in
+        var latestErr: String? = nil
+        
+        await withTaskGroup(of: (Int, AccountTraffic?, Error?).self) { group in
             for (idx, token) in targetTokens.enumerated() {
                 group.addTask {
-                    let acc = try? await self.fetchSingleAccount(token: token, index: idx)
-                    return (idx, acc)
+                    do {
+                        let acc = try await self.fetchSingleAccount(token: token, index: idx)
+                        return (idx, acc, nil)
+                    } catch {
+                        return (idx, nil, error)
+                    }
                 }
             }
             
             var indexedResults: [(Int, AccountTraffic)] = []
-            for await (idx, acc) in group {
+            for await (idx, acc, err) in group {
                 if let acc = acc {
                     indexedResults.append((idx, acc))
+                }
+                if let err = err {
+                    latestErr = err.localizedDescription
                 }
             }
             
@@ -41,8 +54,8 @@ public final class SubscriptionService: @unchecked Sendable {
             results = indexedResults.map { $0.1 }
         }
         
-        // 若网络全部失败，回退尝试缓存
         if results.isEmpty {
+            self.lastError = latestErr ?? "网络连接失败或订阅数据解析错误"
             return StorageManager.shared.loadAccountsCache()
         } else {
             StorageManager.shared.saveAccountsCache(results)
@@ -78,7 +91,8 @@ public final class SubscriptionService: @unchecked Sendable {
         
         let apiRes = try JSONDecoder().decode(SubscribeApiResponse.self, from: data)
         guard let sub = apiRes.data else {
-            throw URLError(.cannotParseResponse)
+            let msg = apiRes.message ?? "订阅数据为空"
+            throw NSError(domain: "PTTSubscription", code: 401, userInfo: [NSLocalizedDescriptionKey: msg])
         }
         return sub
     }

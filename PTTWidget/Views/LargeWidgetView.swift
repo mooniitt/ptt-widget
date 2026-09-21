@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 大尺寸桌面小组件视图 (Large) - 全景数据工作台 (彻底消除上下多余留白)
+/// 大尺寸桌面小组件视图 (Large) - 1:1 像素级精准原生重写 (对齐 ptt_widget_large.js)
 public struct LargeWidgetView: View {
     public let accounts: [AccountTraffic]
     
@@ -9,190 +9,187 @@ public struct LargeWidgetView: View {
     }
     
     public var body: some View {
-        if accounts.count > 1 {
-            dualAccountsView(acc1: accounts[0], acc2: accounts[1])
-        } else if let acc = accounts.first {
-            singleAccountView(acc: acc)
-        } else {
-            emptyView
+        Group {
+            if accounts.count > 1 {
+                dualAccountsView(acc1: accounts[0], acc2: accounts[1])
+            } else if let acc = accounts.first {
+                singleAccountView(acc: acc)
+            } else {
+                ErrorWidgetView(title: "未配置 Token", message: "请打开 App 添加订阅")
+            }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12) // 对齐 JS: widget.setPadding(12, 14, 12, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(TrafficTheme.widgetBackground)
     }
     
-    // MARK: - 双账号全景大组件
+    // MARK: - 双账号全景专属仪表盘 (对齐 renderDualLargeWidget)
     
     private func dualAccountsView(acc1: AccountTraffic, acc2: AccountTraffic) -> some View {
-        VStack(spacing: 8) {
-            // 1. 顶部状态栏
+        let minResetDays = min(acc1.resetDaysLeft, acc2.resetDaysLeft)
+        
+        return VStack(spacing: 0) {
+            // 1. 顶部简洁汇总行 (对齐 JS headerStack)
             HStack {
                 Text("流量监控")
                     .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(TrafficTheme.primaryText)
                 
                 Spacer()
                 
-                let minReset = min(acc1.resetDaysLeft, acc2.resetDaysLeft)
-                Text("双账号 · \(minReset)天后重置")
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.blue)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color(uiColor: .systemGray6))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                TrafficResetBadge(text: "双账号 · \(minResetDays)天后重置", fontSize: 11.0, hPad: 8.0, vPad: 3.0, cornerRadius: 6.0)
             }
             
-            // 2. 中部指标对比卡片 (左右并列)
+            Spacer(minLength: 8)
+            
+            // 2. 中部：双账号指标对比卡片 (左右并列，对齐 JS compareStack)
             HStack(spacing: 8) {
                 metricCard(acc: acc1, tag: "A1")
                 metricCard(acc: acc2, tag: "A2")
             }
             
-            // 3. 下半部：左右双并排周期热力图 (自适应大网格方块)
+            Spacer(minLength: 8)
+            
+            // 3. 下部：双账号每日用量双热力图 (左右并列，对齐 JS chartsStack)
             HStack(spacing: 8) {
                 heatmapCard(acc: acc1)
                 heatmapCard(acc: acc2)
             }
             
-            Spacer(minLength: 2)
+            Spacer(minLength: 8)
             
-            // 4. 底部状态栏 (彻底杜绝悬空留白)
+            // 4. 底部轻量状态栏 (对齐 JS footerStack)
             HStack {
                 Text(Date(), style: .time)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(TrafficTheme.secondaryText)
                 
                 Spacer()
                 
-                HStack(spacing: 3) {
+                HStack(spacing: 4) {
                     Circle()
-                        .fill(Color.green)
-                        .frame(width: 5, height: 5)
+                        .fill(TrafficTheme.trafficGreen)
+                        .frame(width: 6, height: 6)
                     Text("数据已同步")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(TrafficTheme.secondaryText)
                 }
             }
         }
-        .padding(.horizontal, 2)
-        .padding(.vertical, 2)
     }
     
     private func metricCard(acc: AccountTraffic, tag: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            // 顶部 A1 标 + 重置天数
+        let statusColor = TrafficTheme.statusColor(remainingGB: acc.remainingGB, usedPercent: acc.usedPercent)
+        
+        return VStack(alignment: .leading, spacing: 0) {
+            // 卡片顶部：A1 / A2 标 + 重置天数 (对齐 JS r1)
             HStack {
-                Text(tag)
-                    .font(.system(size: 9.5, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Color(uiColor: .systemGray5))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                
+                TrafficTag(text: tag, fontSize: 9.5, hPad: 6, vPad: 2, cornerRadius: 4.0)
                 Spacer()
-                
                 Text("\(acc.resetDaysLeft)天后重置")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(TrafficTheme.secondaryText)
             }
             
-            // 核心剩余大字
+            Spacer(minLength: 6)
+            
+            // 核心剩余大字 (对齐 JS valRow)
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("剩余")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                Text("剩余 ")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(TrafficTheme.secondaryText)
                 
                 Text("\(acc.remainingGB, specifier: "%.1f")")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(acc.isWarning ? .red : .green)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(statusColor)
                 
                 Text("GB")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(acc.isWarning ? .red : .green)
+                    .font(.system(size: 10.5, weight: .bold))
+                    .foregroundStyle(statusColor)
                 
                 Spacer()
                 
                 Text("\(acc.usedPercent)%")
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(TrafficTheme.secondaryText)
             }
             
-            // 进度条
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color(uiColor: .systemGray5))
-                    Capsule()
-                        .fill(acc.isWarning ? Color.red : Color.green)
-                        .frame(width: geo.size.width * CGFloat(min(1.0, Double(acc.usedPercent) / 100.0)))
-                }
-            }
-            .frame(height: 5.5)
+            Spacer(minLength: 5)
             
-            // 底部已用与今日统计
+            // 进度条 (对齐 JS: 5.5pt)
+            TrafficProgressBar(percent: acc.usedPercent, height: 5.5, customColor: statusColor)
+            
+            Spacer(minLength: 6)
+            
+            // 底部用量与今日统计 (对齐 JS r2)
             HStack {
                 Text("用 \(acc.usedGB, specifier: "%.1f") / \(acc.totalGB, specifier: "%.0f")G")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(TrafficTheme.secondaryText)
                 
                 Spacer()
                 
                 if let daily = acc.dailyStats {
                     Text("今日 \(daily.todayGB, specifier: "%.1f")G")
-                        .font(.system(size: 9))
-                        .foregroundStyle(daily.isTodayWarning ? .red : .secondary)
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(daily.isTodayWarning ? TrafficTheme.trafficRed : TrafficTheme.secondaryText)
                 }
             }
         }
-        .padding(9)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .padding(10) // 对齐 JS: card.setPadding(11, 11, 11, 11)
+        .background(TrafficTheme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 11))
     }
     
     private func heatmapCard(acc: AccountTraffic) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             if let daily = acc.dailyStats {
-                SwiftUIHeatmapView(stats: daily, compact: true, cellSize: 11.5, cellGap: 3.0)
+                SwiftUIHeatmapView(stats: daily, compact: true, cellSize: 11.5, cellGap: 2.8)
                     .frame(maxWidth: .infinity, alignment: .center)
             } else {
                 Spacer()
                 Text("暂无当月记录")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(TrafficTheme.secondaryText)
                 Spacer()
             }
         }
-        .padding(8)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .padding(8) // 对齐 JS: chartCard.setPadding(8, 8, 8, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(TrafficTheme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 11))
     }
     
-    // MARK: - 单账号模式
+    // MARK: - 单账号模式 (对齐 renderLargeWidget)
     
     private func singleAccountView(acc: AccountTraffic) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let statusColor = TrafficTheme.statusColor(remainingGB: acc.remainingGB, usedPercent: acc.usedPercent)
+        
+        return VStack(alignment: .leading, spacing: 8) {
             // 顶部栏
             HStack {
                 Text(acc.planName)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(TrafficTheme.primaryText)
                 Spacer()
-                Text("\(acc.resetDaysLeft) 天后重置")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.blue)
+                TrafficResetBadge(text: "\(acc.resetDaysLeft) 天后重置", fontSize: 10.5, hPad: 8, vPad: 3, cornerRadius: 6)
             }
             
-            // 核心卡片
+            // 核心指标卡
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("剩余流量")
                             .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(TrafficTheme.secondaryText)
                         HStack(spacing: 2) {
                             Text("\(acc.remainingGB, specifier: "%.1f")")
-                                .font(.system(size: 26, weight: .bold))
-                                .foregroundStyle(acc.isWarning ? .red : .green)
+                                .font(.system(size: 26, weight: .bold, design: .rounded))
+                                .foregroundStyle(statusColor)
                             Text("GB")
                                 .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(acc.isWarning ? .red : .green)
+                                .foregroundStyle(statusColor)
                         }
                     }
                     Spacer()
@@ -201,57 +198,36 @@ public struct LargeWidgetView: View {
                             .font(.system(size: 11, weight: .medium))
                         Text("已用 \(acc.usedGB, specifier: "%.1f") GB (\(acc.usedPercent)%)")
                             .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(TrafficTheme.secondaryText)
                     }
                 }
                 
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color(uiColor: .systemGray5))
-                        Capsule()
-                            .fill(acc.isWarning ? Color.red : Color.green)
-                            .frame(width: geo.size.width * CGFloat(min(1.0, Double(acc.usedPercent) / 100.0)))
-                    }
-                }
-                .frame(height: 6)
+                TrafficProgressBar(percent: acc.usedPercent, height: 6.0, customColor: statusColor)
             }
             .padding(10)
-            .background(Color(uiColor: .secondarySystemBackground))
+            .background(TrafficTheme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 11))
             
-            // 热力图
+            // 下方热力图
             if let daily = acc.dailyStats {
-                SwiftUIHeatmapView(stats: daily, compact: false, cellSize: 12.0, cellGap: 3.5)
+                SwiftUIHeatmapView(stats: daily, compact: false, cellSize: 12.5, cellGap: 3.2)
                     .padding(8)
-                    .background(Color(uiColor: .secondarySystemBackground))
+                    .background(TrafficTheme.cardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 11))
             }
             
             Spacer()
             
-            // 底部到期栏
+            // 底部栏
             HStack {
                 Text("到期: \(acc.expireDateStr)")
                     .font(.system(size: 9.5))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(TrafficTheme.secondaryText)
                 Spacer()
                 Text("正常运行")
                     .font(.system(size: 9.5))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(TrafficTheme.secondaryText)
             }
-        }
-        .padding(2)
-    }
-    
-    private var emptyView: some View {
-        VStack(spacing: 4) {
-            Text("暂无数据")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.red)
-            Text("请在 App 中配置 Token")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
         }
     }
 }

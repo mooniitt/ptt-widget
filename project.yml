@@ -9,6 +9,7 @@ options:
 settings:
   SWIFT_VERSION: "5.9"
   CODE_SIGN_STYLE: Automatic
+  DEVELOPMENT_TEAM: K6C52A8ZYD
 
 targets:
   PTTApp:
