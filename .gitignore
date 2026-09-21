@@ -1,1 +1,3 @@
 traffic_widget_loader*.js
+node_modules/
+tests/

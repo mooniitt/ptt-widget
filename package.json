@@ -1,0 +1,18 @@
+{
+  "name": "ptt-widget",
+  "version": "1.4.0",
+  "description": "iOS 流量订阅桌面小组件 (Scriptable) - 支持 Small / Medium / Large 三尺寸专属定制",
+  "main": "ptt_widget.js",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "scriptable",
+    "ios-widget",
+    "traffic",
+    "subscription"
+  ],
+  "author": "",
+  "license": "MIT"
+}
