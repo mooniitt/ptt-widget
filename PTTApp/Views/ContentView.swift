@@ -1,10 +1,11 @@
 import SwiftUI
 import WidgetKit
 
-/// iOS 主 App 流量仪表盘视图 - 统一采用原生 TrafficTheme 设计系统
+/// iOS 主 App 流量仪表盘视图 - 搭载高保真骨架屏与流畅交互动效
 public struct ContentView: View {
     @State private var accounts: [AccountTraffic] = []
     @State private var isLoading: Bool = false
+    @State private var isRotating: Bool = false
     @State private var showSettings: Bool = false
     @State private var errorMessage: String? = nil
     
@@ -20,17 +21,20 @@ public struct ContentView: View {
                     }
                     
                     if isLoading && accounts.isEmpty {
-                        ProgressView("正在同步订阅数据...")
-                            .padding(.top, 40)
+                        // 1. 首次加载：呈现双账号高保真骨架屏 (消除突兀白屏与布局跳跃)
+                        VStack(spacing: 16) {
+                            SkeletonTrafficCardView()
+                            SkeletonTrafficCardView()
+                        }
                     } else if accounts.isEmpty {
                         emptyStateView
                     } else {
-                        // 账号卡片列表
+                        // 2. 真实账号卡片列表 (平滑淡入)
                         ForEach(accounts) { acc in
                             accountDetailCard(acc: acc)
                         }
                         
-                        // 底部时间与刷新提示
+                        // 3. 底部时间与刷新提示联动
                         footerView
                     }
                 }
@@ -45,6 +49,8 @@ public struct ContentView: View {
                         Task { await refreshData() }
                     } label: {
                         Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 16, weight: .semibold))
+                            .rotationEffect(.degrees(isRotating ? 360 : 0))
                     }
                     .disabled(isLoading)
                 }
@@ -66,7 +72,10 @@ public struct ContentView: View {
                 await refreshData()
             }
             .task {
-                accounts = StorageManager.shared.loadAccountsCache()
+                let cached = StorageManager.shared.loadAccountsCache()
+                if !cached.isEmpty {
+                    accounts = cached
+                }
                 await refreshData()
             }
         }
@@ -226,15 +235,27 @@ public struct ContentView: View {
     
     private var footerView: some View {
         HStack {
-            Text("最近同步: \(Date(), style: .time)")
-                .font(.system(size: 11))
-                .foregroundStyle(TrafficTheme.secondaryText)
+            if isLoading {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("正在同步最新订阅数据...")
+                        .font(.system(size: 11))
+                        .foregroundStyle(TrafficTheme.secondaryText)
+                }
+            } else {
+                Text("最近同步: \(Date(), style: .time)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(TrafficTheme.secondaryText)
+            }
+            
             Spacer()
+            
             HStack(spacing: 4) {
                 Circle()
-                    .fill(TrafficTheme.trafficGreen)
+                    .fill(isLoading ? Color.orange : TrafficTheme.trafficGreen)
                     .frame(width: 6, height: 6)
-                Text("桌面小组件已就绪")
+                Text(isLoading ? "同步中" : "小组件已同步")
                     .font(.system(size: 11))
                     .foregroundStyle(TrafficTheme.secondaryText)
             }
@@ -243,14 +264,23 @@ public struct ContentView: View {
         .padding(.top, 4)
     }
     
-    // MARK: - 数据刷新
+    // MARK: - 数据刷新与交互动效联动
     
     private func refreshData() async {
         isLoading = true
+        withAnimation(Animation.linear(duration: 0.85).repeatForever(autoreverses: false)) {
+            isRotating = true
+        }
+        
         let newAccounts = await SubscriptionService.shared.fetchAllAccounts()
-        accounts = newAccounts
-        errorMessage = SubscriptionService.shared.lastError
+        
+        withAnimation(.easeInOut(duration: 0.3)) {
+            accounts = newAccounts
+            errorMessage = SubscriptionService.shared.lastError
+            isRotating = false
+            isLoading = false
+        }
+        
         WidgetCenter.shared.reloadAllTimelines()
-        isLoading = false
     }
 }
