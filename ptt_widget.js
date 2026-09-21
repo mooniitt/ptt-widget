@@ -1239,10 +1239,6 @@ function renderDualMediumWidget(widget, accounts, summary) {
 
   headerStack.addSpacer();
 
-  const totalT = headerStack.addText(`共${summary.totalRemainingGB}G`);
-  totalT.font = Font.boldSystemFont(10);
-  totalT.textColor = new Color('#10B981');
-
   widget.addSpacer(5);
 
   // 2. 双账号进度条
