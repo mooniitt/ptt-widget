@@ -58,6 +58,7 @@ async function main() {
   const widget = new ListWidget();
   const widgetSize = config.widgetFamily || 'medium';
   const isAccessory = widgetSize.startsWith('accessory');
+  let isDual = false;
 
   if (!isAccessory) {
     widget.backgroundColor = new Color('#FFFFFF');
@@ -75,26 +76,12 @@ async function main() {
         // 校验并触发单日流量超标系统预警提醒 (支持多账号)
         await checkAndTriggerAlertNotification(data);
 
-        const isDual = data.accounts.length > 1;
+        isDual = data.accounts.length > 1;
         const primaryData = data.accounts[0];
 
         if (isDual) {
-          // 双账号专属适配视图
-          if (widgetSize === 'accessoryRectangular') {
-            renderDualAccessoryRectangular(widget, data.accounts, data.summary);
-          } else if (widgetSize === 'accessoryCircular') {
-            renderDualAccessoryCircular(widget, data.accounts, data.summary);
-          } else if (widgetSize === 'accessoryInline') {
-            renderDualAccessoryInline(widget, data.accounts, data.summary);
-          } else if (widgetSize === 'small') {
-            renderDualSmallWidget(widget, data.accounts, data.summary);
-          } else if (widgetSize === 'extraLarge') {
-            renderDualExtraLargeWidget(widget, data.accounts, data.summary);
-          } else if (widgetSize === 'large') {
-            renderDualLargeWidget(widget, data.accounts, data.summary);
-          } else {
-            renderDualMediumWidget(widget, data.accounts, data.summary);
-          }
+          // 双账号专属：只保留大尺寸全景视图
+          renderDualLargeWidget(widget, data.accounts, data.summary);
         } else {
           // 单账号经典全景视图
           if (widgetSize === 'accessoryRectangular') {
@@ -123,10 +110,10 @@ async function main() {
   if (config.runsInWidget) {
     Script.setWidget(widget);
   } else {
-    if (widgetSize === 'small') {
-      await widget.presentSmall();
-    } else if (widgetSize === 'large') {
+    if (isDual || widgetSize === 'large') {
       await widget.presentLarge();
+    } else if (widgetSize === 'small') {
+      await widget.presentSmall();
     } else if (widgetSize === 'extraLarge') {
       if (typeof widget.presentExtraLarge === 'function') {
         await widget.presentExtraLarge();
@@ -1211,7 +1198,7 @@ function renderDualMediumWidget(widget, accounts, summary) {
   const cardsSpacing = 8;
   const cardW = Math.floor((fullW - cardsSpacing) / 2);
   const cardInnerW = cardW - 16; // 左右 padding 各 8
-  const chartH = 72;
+  const chartH = 82;
 
   // 左右双卡片水平容器
   const cardsContainer = widget.addStack();
@@ -1230,7 +1217,7 @@ function renderDualMediumWidget(widget, accounts, summary) {
     card.layoutVertically();
     card.backgroundColor = new Color('#F6F7F9');
     card.cornerRadius = 10;
-    card.setPadding(7, 8, 7, 8);
+    card.setPadding(8, 8, 8, 8);
 
     // 1. 卡片顶部：账号标识 + 剩余流量 + 重置天数
     const cardHeader = card.addStack();
@@ -1260,29 +1247,9 @@ function renderDualMediumWidget(widget, accounts, summary) {
     resetLbl.font = Font.systemFont(8.5);
     resetLbl.textColor = new Color('#8E8E93');
 
-    card.addSpacer(3);
+    card.addSpacer(5);
 
-    // 2. 迷你进度条行 (内嵌在各自卡片中)
-    const pbRow = card.addStack();
-    pbRow.layoutHorizontally();
-    pbRow.centerAlignContent();
-    pbRow.spacing = 4;
-
-    const pbWidth = cardInnerW - 28;
-    const pbImg = drawProgressBar(acc.usedPercent, pbWidth, 3.5, isLow ? '#FF3B30' : null);
-    const pbWidget = pbRow.addImage(pbImg);
-    pbWidget.imageSize = new Size(pbWidth, 3.5);
-    pbWidget.resizable = true;
-
-    pbRow.addSpacer();
-
-    const pctText = pbRow.addText(`${acc.usedPercent}%`);
-    pctText.font = Font.systemFont(8);
-    pctText.textColor = new Color('#8E8E93');
-
-    card.addSpacer(3);
-
-    // 3. 专属每日用量热力图 (居中铺展在卡片内)
+    // 2. 专属每日用量热力图 (居中铺展在卡片内)
     if (acc.dailyStats && acc.dailyStats.days && acc.dailyStats.days.length > 0) {
       const chartImg = drawDailyTrafficChart(acc.dailyStats, cardInnerW, chartH, CONFIG.chart_type);
       const chartWidgetImg = card.addImage(chartImg);
