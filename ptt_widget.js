@@ -1137,7 +1137,7 @@ function renderStatusBadge(stack, data, isSmall = false) {
 
 // ================= 双账号专属组件渲染 =================
 
-// 双账号 - 大号小组件 (Large 专属全景仪表盘：顶部汇总 + 中部双指标卡片 + 下部双账号并排热力图)
+// 双账号 - 大号小组件 (Large 专属全景仪表盘：顶部汇总 + 中部双指标卡片 + 下部双账号并排热力图 + 底部状态栏)
 function renderDualLargeWidget(widget, accounts, summary) {
   const fullW = getWidgetChartWidth('large');
   const cardsSpacing = 8;
@@ -1152,7 +1152,7 @@ function renderDualLargeWidget(widget, accounts, summary) {
   headerStack.centerAlignContent();
 
   const titleText = headerStack.addText('流量监控');
-  titleText.font = Font.boldSystemFont(14);
+  titleText.font = Font.boldSystemFont(15);
   titleText.textColor = new Color('#1C1C1E');
 
   headerStack.addSpacer();
@@ -1160,12 +1160,12 @@ function renderDualLargeWidget(widget, accounts, summary) {
   const badge = headerStack.addStack();
   badge.backgroundColor = new Color('#F2F4F7');
   badge.cornerRadius = 6;
-  badge.setPadding(2, 7, 2, 7);
+  badge.setPadding(3, 8, 3, 8);
   const badgeText = badge.addText(`双账号 · ${summary.minResetDays}天后重置`);
-  badgeText.font = Font.mediumSystemFont(10);
+  badgeText.font = Font.mediumSystemFont(11);
   badgeText.textColor = new Color('#007AFF');
 
-  widget.addSpacer(8);
+  widget.addSpacer(10);
 
   // 2. 中部：双账号指标对比卡片 (左右并列)
   const compareStack = widget.addStack();
@@ -1183,8 +1183,8 @@ function renderDualLargeWidget(widget, accounts, summary) {
     const card = compareStack.addStack();
     card.layoutVertically();
     card.backgroundColor = new Color('#F6F7F9');
-    card.cornerRadius = 10;
-    card.setPadding(9, 10, 9, 10);
+    card.cornerRadius = 11;
+    card.setPadding(11, 11, 11, 11);
 
     // 卡片顶部：A1 / A2 标 + 重置天数
     const r1 = card.addStack();
@@ -1193,19 +1193,19 @@ function renderDualLargeWidget(widget, accounts, summary) {
 
     const tag = r1.addStack();
     tag.backgroundColor = new Color('#E5E7EB');
-    tag.cornerRadius = 3.5;
-    tag.setPadding(1.5, 5, 1.5, 5);
+    tag.cornerRadius = 4;
+    tag.setPadding(2, 6, 2, 6);
     const tagT = tag.addText(`A${i + 1}`);
-    tagT.font = Font.boldSystemFont(9);
+    tagT.font = Font.boldSystemFont(9.5);
     tagT.textColor = new Color('#374151');
 
     r1.addSpacer();
 
     const rst = r1.addText(`${acc.resetDaysLeft}天后重置`);
-    rst.font = Font.systemFont(9);
+    rst.font = Font.systemFont(9.5);
     rst.textColor = new Color('#8E8E93');
 
-    card.addSpacer(5);
+    card.addSpacer(7);
 
     // 核心剩余大字
     const valRow = card.addStack();
@@ -1213,33 +1213,33 @@ function renderDualLargeWidget(widget, accounts, summary) {
     valRow.bottomAlignContent();
 
     const remLbl = valRow.addText('剩余 ');
-    remLbl.font = Font.systemFont(10);
+    remLbl.font = Font.systemFont(10.5);
     remLbl.textColor = new Color('#8E8E93');
 
     const numVal = valRow.addText(`${acc.remainingGB}`);
-    numVal.font = Font.boldSystemFont(20);
+    numVal.font = Font.boldSystemFont(22);
     numVal.textColor = new Color(numColor);
 
     valRow.addSpacer(2);
     const unitLbl = valRow.addText('GB');
-    unitLbl.font = Font.boldSystemFont(10);
+    unitLbl.font = Font.boldSystemFont(10.5);
     unitLbl.textColor = new Color(numColor);
 
     valRow.addSpacer();
 
     const pctLbl = valRow.addText(`${acc.usedPercent}%`);
-    pctLbl.font = Font.systemFont(9.5);
+    pctLbl.font = Font.mediumSystemFont(10);
     pctLbl.textColor = new Color('#8E8E93');
 
-    card.addSpacer(5);
+    card.addSpacer(6);
 
     // 进度条
-    const pbImg = drawProgressBar(acc.usedPercent, cardInnerW, 4.5, isLow ? '#FF3B30' : null);
+    const pbImg = drawProgressBar(acc.usedPercent, cardInnerW, 5.5, isLow ? '#FF3B30' : null);
     const pbWidget = card.addImage(pbImg);
-    pbWidget.imageSize = new Size(cardInnerW, 4.5);
+    pbWidget.imageSize = new Size(cardInnerW, 5.5);
     pbWidget.resizable = true;
 
-    card.addSpacer(6);
+    card.addSpacer(7);
 
     // 底部用量与今日统计
     const r2 = card.addStack();
@@ -1247,26 +1247,26 @@ function renderDualLargeWidget(widget, accounts, summary) {
     r2.centerAlignContent();
 
     const quotaLbl = r2.addText(`用 ${acc.usedGB} / ${acc.totalGB}G`);
-    quotaLbl.font = Font.systemFont(9);
+    quotaLbl.font = Font.systemFont(9.5);
     quotaLbl.textColor = new Color('#8E8E93');
 
     r2.addSpacer();
 
     if (acc.dailyStats && acc.dailyStats.todayGB !== undefined) {
       const todayLbl = r2.addText(`今日 ${acc.dailyStats.todayGB}G`);
-      todayLbl.font = Font.systemFont(9);
+      todayLbl.font = Font.systemFont(9.5);
       todayLbl.textColor = isTodayWarn ? new Color('#FF3B30') : new Color('#8E8E93');
     }
   }
 
-  widget.addSpacer(8);
+  widget.addSpacer(10);
 
-  // 3. 下部：双账号每日用量双热力图 (左右并列)
+  // 3. 下部：双账号每日用量双热力图 (左右并列，高度充盈)
   const chartsStack = widget.addStack();
   chartsStack.layoutHorizontally();
   chartsStack.spacing = cardsSpacing;
 
-  const chartH = 92;
+  const chartH = 136;
 
   for (let i = 0; i < 2; i++) {
     const acc = accounts[i];
@@ -1275,7 +1275,7 @@ function renderDualLargeWidget(widget, accounts, summary) {
     const chartCard = chartsStack.addStack();
     chartCard.layoutVertically();
     chartCard.backgroundColor = new Color('#F6F7F9');
-    chartCard.cornerRadius = 10;
+    chartCard.cornerRadius = 11;
     chartCard.setPadding(8, 8, 8, 8);
 
     if (acc.dailyStats && acc.dailyStats.days && acc.dailyStats.days.length > 0) {
@@ -1290,6 +1290,31 @@ function renderDualLargeWidget(widget, accounts, summary) {
       pbWidgetImg.resizable = true;
     }
   }
+
+  widget.addSpacer(10);
+
+  // 4. 底部轻量状态栏 (消除底部空旷留白)
+  const footerStack = widget.addStack();
+  footerStack.layoutHorizontally();
+  footerStack.centerAlignContent();
+
+  const now = new Date();
+  const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const syncText = footerStack.addText(`更新于 ${timeStr}`);
+  syncText.font = Font.systemFont(9);
+  syncText.textColor = new Color('#8E8E93');
+
+  footerStack.addSpacer();
+
+  const statusStack = footerStack.addStack();
+  statusStack.layoutHorizontally();
+  statusStack.centerAlignContent();
+  const dot = statusStack.addText('● ');
+  dot.font = Font.systemFont(7.5);
+  dot.textColor = new Color('#10B981');
+  const statusText = statusStack.addText('数据已同步');
+  statusText.font = Font.systemFont(9);
+  statusText.textColor = new Color('#8E8E93');
 }
 
 // 大号小组件 (Large 完整五段式高质感数据看板)
@@ -1457,10 +1482,10 @@ function renderLargeWidget(widget, data) {
   chartSub.font = Font.systemFont(10);
   chartSub.textColor = new Color('#8E8E93');
 
-  widget.addSpacer(4);
+  widget.addSpacer(6);
 
   // 1:1 大尺寸高清图表 (100% 满宽自适应)
-  const chartH = 120;
+  const chartH = 145;
   if (daily && daily.days && daily.days.length > 0) {
     const chartImg = drawDailyTrafficChart(daily, chartW, chartH, CONFIG.chart_type);
     const chartWidgetImg = widget.addImage(chartImg);
@@ -1474,7 +1499,7 @@ function renderLargeWidget(widget, data) {
     progressWidgetImg.resizable = true;
   }
 
-  widget.addSpacer(7);
+  widget.addSpacer(9);
 
   // 5. 底部状态栏
   const footerStack = widget.addStack();
