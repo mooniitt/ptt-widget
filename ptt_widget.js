@@ -1,13 +1,55 @@
+// Variables used by Scriptable.
+// These must be at the very top of the file. Do not edit.
+// icon-color: purple; icon-glyph: chart-pie;
 /**
- * iOS 流量订阅桌面小组件 (远程核心逻辑)
- * 适配尺寸：Small (小卡片) / Medium (中卡片) / Large (大卡片)
- * 功能特性：当月每日使用额度可视化图表 (柱状图/折线图)、剩余流量监控、重置提醒
+ * iOS 流量订阅桌面小组件 - 全能自适应版本 (Universal All-in-One)
+ * 特性：
+ * 1. 账号模式：智能支持【单账号】与【双账号】，按配置自动呈现专属视图；
+ * 2. 尺寸支持：100% 完美原生适配【小卡片 (Small)】、【中卡片 (Medium)】与【大卡片 (Large)】；
+ * 3. 参数切换：长按小组件输入 1 或 2 切换单账号，输入 s / m / l 强制指定尺寸。
  */
+
+// ================= 辅助函数：Token 解析 =================
+function resolveActiveTokens() {
+  const DEFAULT_TOKENS = [
+    'f4XTTjtgVDFAUV79FgDp7i2hEF2w7sUvpGiNmeZkce4f55bb', // 账号 1 (200G)
+    'ltSOzTIW6LqUNtWGt2Tl89mCkRy53iMUUMvedXtY062087e9'  // 账号 2 (300G)
+  ];
+
+  const param = (typeof args !== 'undefined' && args.widgetParameter) ? args.widgetParameter.trim() : '';
+  const globalTokens = (typeof globalThis !== 'undefined' && Array.isArray(globalThis.__LOCAL_TRAFFIC_TOKENS__) && globalThis.__LOCAL_TRAFFIC_TOKENS__.length > 0)
+    ? globalThis.__LOCAL_TRAFFIC_TOKENS__
+    : (typeof globalThis !== 'undefined' && typeof globalThis.__LOCAL_TRAFFIC_TOKEN__ === 'string' && globalThis.__LOCAL_TRAFFIC_TOKEN__.trim()
+        ? [globalThis.__LOCAL_TRAFFIC_TOKEN__.trim()]
+        : DEFAULT_TOKENS);
+
+  // 识别参数中的账号切换 (1 / 2 / acc1 / acc2)
+  const paramParts = param.split(/[,，\s]+/).filter(Boolean);
+  for (const p of paramParts) {
+    const low = p.toLowerCase();
+    if (low === '1' || low === 'acc1') {
+      return globalTokens.slice(0, 1);
+    }
+    if (low === '2' || low === 'acc2') {
+      return globalTokens.length > 1 ? [globalTokens[1]] : globalTokens.slice(0, 1);
+    }
+  }
+
+  if (param.includes(',')) {
+    const custom = paramParts.filter(p => !['s', 'm', 'l', 'small', 'medium', 'large'].includes(p.toLowerCase()));
+    if (custom.length > 0 && custom[0].length >= 10) {
+      return custom;
+    }
+  }
+
+  // 默认返回有效 tokens (若配置了单个则返回单个，若配置了多个则全量展示)
+  return (globalTokens && globalTokens.length > 0) ? globalTokens : DEFAULT_TOKENS;
+}
 
 // ================= 配置区域 =================
 const CONFIG = {
   // 脚本版本号
-  version: 'v1.3.0',
+  version: 'v1.5.0',
   // 订阅 API 地址
   api_url: 'https://ptt.ixlmo.com/api/v1/user/getSubscribe',
   // 每日流量统计 API 地址
@@ -18,8 +60,10 @@ const CONFIG = {
   daily_warning_threshold: 10,
   // 是否在单日超量时触发系统本地通知提醒
   enable_warning_notification: true,
-  // 从 Loader 注入的全局变量或小组件参数中读取 Token
-  token: globalThis.__LOCAL_TRAFFIC_TOKEN__ || (args.widgetParameter && args.widgetParameter.trim()) || '',
+  // 多 Token 解析列表（支持单 Token 与多 Token 数组）
+  tokens: resolveActiveTokens(),
+  // 兼容老字段
+  token: (resolveActiveTokens()[0]) || '',
   // 刷新间隔（秒）
   cache_time: 600
 };
@@ -27,39 +71,57 @@ const CONFIG = {
 // ================= 主逻辑 =================
 async function main() {
   const widget = new ListWidget();
-  const widgetSize = config.widgetFamily || 'medium';
-  const isAccessory = widgetSize.startsWith('accessory');
 
-  if (!isAccessory) {
-    widget.backgroundColor = new Color('#FFFFFF');
-    widget.setPadding(12, 15, 12, 15);
+  // 1. 智能检测小组件尺寸 (系统环境变量或参数覆盖)
+  let widgetSize = (typeof config !== 'undefined' && config.widgetFamily) ? config.widgetFamily : 'large';
+  const rawParam = (typeof args !== 'undefined' && args.widgetParameter) ? args.widgetParameter.trim() : '';
+  const paramParts = rawParam.split(/[,，\s]+/).filter(Boolean);
+  for (const p of paramParts) {
+    const low = p.toLowerCase();
+    if (low === 's' || low === 'small') widgetSize = 'small';
+    else if (low === 'm' || low === 'medium') widgetSize = 'medium';
+    else if (low === 'l' || low === 'large') widgetSize = 'large';
+  }
+
+  widget.backgroundColor = new Color('#FFFFFF');
+  if (widgetSize === 'small') {
+    widget.setPadding(11, 11, 11, 11);
+  } else {
+    widget.setPadding(12, 14, 12, 14);
   }
 
   try {
-    if (!CONFIG.token) {
+    if (!CONFIG.tokens || CONFIG.tokens.length === 0) {
       renderErrorWidget(widget, '未配置 Token');
     } else {
       const data = await fetchData();
-      if (!data) {
+      if (!data || !data.accounts || data.accounts.length === 0) {
         renderErrorWidget(widget, '服务不可用');
       } else {
-        // 校验并触发单日流量超标系统预警提醒
+        // 校验并触发单日流量超标系统预警提醒 (支持多账号)
         await checkAndTriggerAlertNotification(data);
 
-        if (widgetSize === 'accessoryRectangular') {
-          renderAccessoryRectangular(widget, data);
-        } else if (widgetSize === 'accessoryCircular') {
-          renderAccessoryCircular(widget, data);
-        } else if (widgetSize === 'accessoryInline') {
-          renderAccessoryInline(widget, data);
-        } else if (widgetSize === 'small') {
-          renderSmallWidget(widget, data);
-        } else if (widgetSize === 'extraLarge') {
-          renderExtraLargeWidget(widget, data);
-        } else if (widgetSize === 'large') {
-          renderLargeWidget(widget, data);
+        const isDual = data.accounts.length > 1;
+
+        if (widgetSize === 'small') {
+          if (isDual) {
+            renderDualSmallWidget(widget, data.accounts, data.summary);
+          } else {
+            renderSmallWidget(widget, data.accounts[0]);
+          }
+        } else if (widgetSize === 'medium') {
+          if (isDual) {
+            renderDualMediumWidget(widget, data.accounts, data.summary);
+          } else {
+            renderMediumWidget(widget, data.accounts[0]);
+          }
         } else {
-          renderMediumWidget(widget, data);
+          // large / extraLarge 全景大尺寸
+          if (isDual) {
+            renderDualLargeWidget(widget, data.accounts, data.summary);
+          } else {
+            renderLargeWidget(widget, data.accounts[0]);
+          }
         }
       }
     }
@@ -73,18 +135,10 @@ async function main() {
   } else {
     if (widgetSize === 'small') {
       await widget.presentSmall();
-    } else if (widgetSize === 'large') {
-      await widget.presentLarge();
-    } else if (widgetSize === 'extraLarge') {
-      if (typeof widget.presentExtraLarge === 'function') {
-        await widget.presentExtraLarge();
-      } else {
-        await widget.presentLarge();
-      }
-    } else if (isAccessory) {
-      await widget.presentSmall();
-    } else {
+    } else if (widgetSize === 'medium') {
       await widget.presentMedium();
+    } else {
+      await widget.presentLarge();
     }
   }
   Script.complete();
@@ -93,10 +147,60 @@ async function main() {
 // ================= 数据获取与缓存 =================
 async function fetchData() {
   const fm = FileManager.local();
-  const cachePath = fm.joinPath(fm.documentsDirectory(), 'traffic_widget_cache.json');
+  const tokens = CONFIG.tokens;
+  const accounts = [];
+  let anyFromCache = false;
+
+  const results = await Promise.allSettled(
+    tokens.map((token, idx) => fetchSingleAccount(fm, token, idx))
+  );
+
+  for (const res of results) {
+    if (res.status === 'fulfilled' && res.value) {
+      accounts.push(res.value);
+      if (res.value.isFromCache) anyFromCache = true;
+    }
+  }
+
+  if (accounts.length === 0) {
+    // 降级尝试全局老缓存
+    try {
+      const oldCachePath = fm.joinPath(fm.documentsDirectory(), 'traffic_widget_cache.json');
+      if (fm.fileExists(oldCachePath)) {
+        const cached = JSON.parse(fm.readString(oldCachePath));
+        if (cached && (cached.subData || cached.plan)) {
+          const parsed = parseTrafficData(cached.subData || cached, cached.allLogs || cached.logData || [], 0);
+          if (parsed) {
+            parsed.isFromCache = true;
+            accounts.push(parsed);
+            anyFromCache = true;
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  if (accounts.length === 0) return null;
+
+  const summary = computeAccountsSummary(accounts);
+  summary.isFromCache = anyFromCache;
+  summary.updateTime = formatCurrentTime();
+
+  return {
+    accounts,
+    summary,
+    isFromCache: anyFromCache,
+    updateTime: formatCurrentTime()
+  };
+}
+
+// 获取单个账号数据 (独立文件缓存)
+async function fetchSingleAccount(fm, token, index) {
+  const tokenHash = token.length >= 10 ? token.slice(0, 10) : token;
+  const cachePath = fm.joinPath(fm.documentsDirectory(), `traffic_widget_cache_${tokenHash}.json`);
   const headers = {
     'accept': 'application/json, text/plain, */*',
-    'authorization': `Bearer ${CONFIG.token}`,
+    'authorization': `Bearer ${token}`,
     'referer': 'https://ptt.ixlmo.com/',
     'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X)'
   };
@@ -104,7 +208,6 @@ async function fetchData() {
   let subData = null;
   let logData = null;
 
-  // 1. 并发请求订阅信息与每日流量明细
   try {
     const subReq = new Request(`${CONFIG.api_url}?t=${Date.now()}`);
     subReq.timeoutInterval = 8;
@@ -127,7 +230,6 @@ async function fetchData() {
     }
 
     if (subData) {
-      // 合并历史日志列表，防止跨月或服务端只返回当月/网络超时时丢失周期前期明细
       let mergedLogs = (Array.isArray(logData) && logData.length > 0) ? [...logData] : [];
       try {
         if (fm.fileExists(cachePath)) {
@@ -153,15 +255,15 @@ async function fetchData() {
         cachedAt: Date.now()
       };
       fm.writeString(cachePath, JSON.stringify(cacheObj));
-      const parsed = parseTrafficData(subData, mergedLogs);
+      const parsed = parseTrafficData(subData, mergedLogs, index);
       if (parsed) parsed.isFromCache = false;
       return parsed;
     }
   } catch (e) {
-    console.log('网络请求失败，尝试读取本地缓存数据: ' + e);
+    console.log(`账号 [${index + 1}] 网络请求失败，尝试读取本地缓存: ` + e);
   }
 
-  // 2. 读取本地缓存并容错兼容
+  // 读取本地独立缓存
   try {
     if (fm.fileExists(cachePath)) {
       const cacheStr = fm.readString(cachePath);
@@ -169,7 +271,7 @@ async function fetchData() {
       if (cached) {
         const sData = cached.subData || cached;
         const lData = cached.allLogs || cached.logData || null;
-        const parsed = parseTrafficData(sData, lData);
+        const parsed = parseTrafficData(sData, lData, index);
         if (parsed) {
           parsed.isFromCache = true;
           return parsed;
@@ -177,14 +279,59 @@ async function fetchData() {
       }
     }
   } catch (e) {
-    console.log('读取缓存失败: ' + e);
+    console.log(`账号 [${index + 1}] 读取缓存失败: ` + e);
   }
 
   return null;
 }
 
+// 汇总多个账号的总量、剩余量与状态
+function computeAccountsSummary(accounts) {
+  const GB = 1024 * 1024 * 1024;
+  let totalEnableBytes = 0;
+  let totalUsedBytes = 0;
+  let minResetDays = 9999;
+  let isAnyWarning = false;
+
+  for (const acc of accounts) {
+    totalEnableBytes += (acc.enableBytes || 0);
+    totalUsedBytes += (acc.usedBytes || 0);
+    if (acc.resetDaysLeft !== undefined && acc.resetDaysLeft < minResetDays) {
+      minResetDays = acc.resetDaysLeft;
+    }
+    if (acc.remainingGB < 5 || acc.usedPercent > 90 || (acc.dailyStats && acc.dailyStats.isTodayWarning)) {
+      isAnyWarning = true;
+    }
+  }
+
+  const totalRemainingBytes = Math.max(0, totalEnableBytes - totalUsedBytes);
+  const totalGB = (totalEnableBytes / GB).toFixed(2);
+  const usedGB = (totalUsedBytes / GB).toFixed(2);
+  const totalRemainingGB = (totalRemainingBytes / GB).toFixed(2);
+  const overallUsedPercent = totalEnableBytes > 0 ? Math.min(100, Math.round((totalUsedBytes / totalEnableBytes) * 100)) : 0;
+  const overallRemainingPercent = 100 - overallUsedPercent;
+
+  // 活跃账号选择 (优先选择有流量统计日志或流量消耗较大的账号作为主账号，用于图表展示)
+  const activeAccount = [...accounts].sort((a, b) => {
+    const aLogs = (a.dailyStats && a.dailyStats.days) ? a.dailyStats.days.filter(d => d.bytes > 0).length : 0;
+    const bLogs = (b.dailyStats && b.dailyStats.days) ? b.dailyStats.days.filter(d => d.bytes > 0).length : 0;
+    return bLogs - aLogs || (b.usedBytes || 0) - (a.usedBytes || 0);
+  })[0] || accounts[0];
+
+  return {
+    totalGB,
+    usedGB,
+    totalRemainingGB,
+    overallUsedPercent,
+    overallRemainingPercent,
+    minResetDays: minResetDays === 9999 ? 0 : minResetDays,
+    isAnyWarning,
+    activeAccount
+  };
+}
+
 // ================= 数据解析与指标计算 =================
-function parseTrafficData(subInfo, logList) {
+function parseTrafficData(subInfo, logList, index = 0) {
   if (!subInfo || typeof subInfo !== 'object') return null;
 
   const u = Number(subInfo.u) || 0;
@@ -221,9 +368,20 @@ function parseTrafficData(subInfo, logList) {
     dailyStats.remainingGB = remainingGB;
   }
 
+  const rawPlanName = (subInfo.plan && subInfo.plan.name) ? subInfo.plan.name : '流量套餐';
+  const planName = rawPlanName.replace(/^[^\w\u4e00-\u9fa5]+/, '').trim();
+  const shortPlanName = planName.replace(/\/月流量套餐/, '套餐').replace(/流量套餐/, '套餐');
+  const shortEmail = subInfo.email ? subInfo.email.split('@')[0] : '';
+
   return {
-    planName: (subInfo.plan && subInfo.plan.name) ? subInfo.plan.name.replace(/^[^\w\u4e00-\u9fa5]+/, '').trim() : '流量套餐',
+    accountIndex: index + 1,
+    planName,
+    shortPlanName: shortPlanName || planName,
     email: subInfo.email || '',
+    shortEmail,
+    usedBytes: totalUsed,
+    enableBytes: totalEnable,
+    remainingBytes: remaining,
     usedGB,
     totalGB,
     remainingGB,
@@ -434,49 +592,48 @@ async function checkAndTriggerAlertNotification(data) {
   const threshold = Number(CONFIG.daily_warning_threshold) || 0;
   if (threshold <= 0) return;
 
-  const daily = data && data.dailyStats;
-  if (!daily || !daily.isTodayWarning) return;
+  const accounts = (data && Array.isArray(data.accounts)) ? data.accounts : [data];
+  const fm = FileManager.local();
+  const alertCachePath = fm.joinPath(fm.documentsDirectory(), 'traffic_alert_record.json');
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  let alertRecord = {};
+  if (fm.fileExists(alertCachePath)) {
+    try {
+      alertRecord = JSON.parse(fm.readString(alertCachePath)) || {};
+    } catch (e) {}
+  }
+
+  for (const acc of accounts) {
+    const daily = acc && acc.dailyStats;
+    if (!daily || !daily.isTodayWarning) continue;
+
+    const accName = acc.shortEmail || acc.planName || `账号${acc.accountIndex || 1}`;
+    const alertKey = `${todayStr}_${accName}_${threshold}`;
+    if (alertRecord[alertKey]) continue;
+
+    try {
+      const notif = new Notification();
+      notif.title = '⚠️ 流量消耗超量预警';
+      notif.body = `账号 [${accName}] 今日已消耗 ${daily.todayGB} GB，超过预警阈值 (${threshold} GB)，请注意排查后台应用或热点共享！`;
+      notif.sound = 'default';
+      await notif.schedule();
+      alertRecord[alertKey] = Date.now();
+    } catch (err) {
+      console.log('触发流量预警通知失败: ' + err);
+    }
+  }
 
   try {
-    const fm = FileManager.local();
-    const alertCachePath = fm.joinPath(fm.documentsDirectory(), 'traffic_alert_record.json');
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-
-    let alertRecord = {};
-    if (fm.fileExists(alertCachePath)) {
-      try {
-        alertRecord = JSON.parse(fm.readString(alertCachePath)) || {};
-      } catch (e) {}
-    }
-
-    // 若今日已经对该阈值发送过提醒，则不重复提醒骚扰
-    if (alertRecord.lastDate === todayStr && alertRecord.threshold === threshold) {
-      return;
-    }
-
-    // 发起系统本地横幅通知
-    const notif = new Notification();
-    notif.title = '⚠️ 流量消耗超量预警';
-    notif.body = `今日流量已消耗 ${daily.todayGB} GB，超过预警阈值 (${threshold} GB)，请注意排查后台应用或热点共享！`;
-    notif.sound = 'default';
-    await notif.schedule();
-
-    // 持久化记录
-    alertRecord.lastDate = todayStr;
-    alertRecord.threshold = threshold;
-    alertRecord.lastAlertGB = daily.todayGB;
-    alertRecord.timestamp = Date.now();
     fm.writeString(alertCachePath, JSON.stringify(alertRecord));
-  } catch (err) {
-    console.log('触发流量预警通知失败: ' + err);
-  }
+  } catch (e) {}
 }
 
 // ================= 图表与图形渲染引擎 =================
 
-// 绘制高度自定义的进度条
-function drawProgressBar(percent, width = 600, height = 14) {
+// 绘制高度自定义的进度条 (支持自定义填充色与底色)
+function drawProgressBar(percent, width = 600, height = 14, customColor = null, bgColor = '#E5E5EA') {
   const dc = new DrawContext();
   dc.size = new Size(width, height);
   dc.opaque = false;
@@ -485,7 +642,7 @@ function drawProgressBar(percent, width = 600, height = 14) {
   const bgPath = new Path();
   bgPath.addRoundedRect(new Rect(0, 0, width, height), height / 2, height / 2);
   dc.addPath(bgPath);
-  dc.setFillColor(new Color('#E5E5EA'));
+  dc.setFillColor(new Color(bgColor));
   dc.fillPath();
 
   if (percent > 0) {
@@ -494,9 +651,12 @@ function drawProgressBar(percent, width = 600, height = 14) {
     fillPath.addRoundedRect(new Rect(0, 0, fillWidth, height), height / 2, height / 2);
     dc.addPath(fillPath);
 
-    let color = '#007AFF';
-    if (percent > 80) color = '#FF3B30';
-    else if (percent > 60) color = '#FF9500';
+    let color = customColor;
+    if (!color) {
+      if (percent > 85) color = '#FF3B30';
+      else if (percent > 65) color = '#FF9500';
+      else color = '#007AFF';
+    }
 
     dc.setFillColor(new Color(color));
     dc.fillPath();
@@ -506,8 +666,8 @@ function drawProgressBar(percent, width = 600, height = 14) {
 }
 
 // 统一图表绘制入口 (支持 GitHub 贡献热力图、柱状图与折线图)
-// 获取小组件内容区满宽尺寸 (去除左右各 16pt 内边距后的真实宽度)
-function getWidgetChartWidth(family = 'medium') {
+// 获取大号小组件内容区满宽尺寸 (去除左右内边距后的真实宽度)
+function getWidgetChartWidth() {
   let screenW = 390;
   try {
     if (typeof Device !== 'undefined' && Device.screenSize) {
@@ -516,33 +676,14 @@ function getWidgetChartWidth(family = 'medium') {
   } catch (e) {
     screenW = 390;
   }
-  if (family === 'large' || family === 'medium') {
-    if (screenW >= 428) return 332; // Pro Max, Plus (364 - 32)
-    if (screenW >= 390) return 328; // 6.1寸标准机型 (360 - 32)
-    return 300; // mini / SE (329 - 32)
-  }
-  return 328;
+  if (screenW >= 428) return 332; // Pro Max, Plus
+  if (screenW >= 390) return 328; // 标准机型
+  return 300; // mini / SE
 }
 
-// 获取小组件内容区图表高度 (自适应设备，Medium 尺寸由原 78pt 提升至 108~114pt，扩大近 50%)
-function getWidgetChartHeight(family = 'medium') {
-  let screenW = 390;
-  try {
-    if (typeof Device !== 'undefined' && Device.screenSize) {
-      screenW = Device.screenSize().width;
-    }
-  } catch (e) {
-    screenW = 390;
-  }
-  if (family === 'medium') {
-    if (screenW >= 428) return 114; // Pro Max, Plus
-    if (screenW >= 390) return 108; // 6.1寸标准机型
-    return 98; // mini / SE
-  }
-  if (family === 'large') {
-    return 120;
-  }
-  return 108;
+// 获取大号小组件内容区图表高度
+function getWidgetChartHeight() {
+  return 120;
 }
 
 // 绘制每日用量图表 (分发热力图、柱状图与折线图)
@@ -611,7 +752,7 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
   const gridH = totalRows * cellSize + (totalRows - 1) * gap;
   const gridW = 7 * cellSize + 6 * gap;
 
-  const gridStartX = 6;
+  const gridStartX = isCompact ? Math.max(2, Math.floor((width - gridW) / 2)) : 6;
   const heatTotalW = gridStartX + gridW;
   const weekHeaderY = topH + 2;
   const gridY = weekHeaderY + weekHeaderH + 2;
@@ -1041,85 +1182,506 @@ function renderStatusBadge(stack, data, isSmall = false) {
   } catch (e) {}
 
   const timeText = statusStack.addText(data.updateTime || formatCurrentTime());
-  timeText.font = Font.systemFont(isSmall ? 9 : 10);
+  timeText.font = Font.systemFont(isSmall ? 8.5 : 9.5);
   timeText.textColor = data.isFromCache ? new Color('#FF9500') : new Color('#8E8E93');
 }
 
-// ================= 组件尺寸视图渲染 =================
+// ================= 小号组件渲染 (Small) =================
 
-// 中号小组件 (Medium 核心主视图)
+// 单账号 - 小号小组件 (Small 经典大字看板)
+function renderSmallWidget(widget, data) {
+  const isLow = data.remainingGB < 5 || data.usedPercent > 90;
+  const numColor = isLow ? '#FF3B30' : (data.remainingGB < 20 ? '#FF9500' : '#10B981');
+
+  // 顶部行：套餐名称 + 重置倒计时
+  const topRow = widget.addStack();
+  topRow.layoutHorizontally();
+  topRow.centerAlignContent();
+
+  const titleText = topRow.addText(data.shortPlanName || data.planName);
+  titleText.font = Font.boldSystemFont(11.5);
+  titleText.textColor = new Color('#1C1C1E');
+  titleText.lineLimit = 1;
+
+  topRow.addSpacer();
+
+  const resetBadge = topRow.addStack();
+  resetBadge.backgroundColor = new Color('#F2F4F7');
+  resetBadge.cornerRadius = 4;
+  resetBadge.setPadding(1.5, 5, 1.5, 5);
+  const resetText = resetBadge.addText(`${data.resetDaysLeft}d`);
+  resetText.font = Font.mediumSystemFont(9);
+  resetText.textColor = new Color('#007AFF');
+
+  widget.addSpacer(8);
+
+  // 核心剩余流量
+  const remLabel = widget.addText('剩余流量');
+  remLabel.font = Font.systemFont(9.5);
+  remLabel.textColor = new Color('#8E8E93');
+
+  widget.addSpacer(2);
+
+  const valStack = widget.addStack();
+  valStack.layoutHorizontally();
+  valStack.bottomAlignContent();
+
+  const remVal = valStack.addText(data.remainingGB);
+  remVal.font = Font.boldSystemFont(27);
+  remVal.textColor = new Color(numColor);
+
+  valStack.addSpacer(2);
+
+  const unitText = valStack.addText('GB');
+  unitText.font = Font.boldSystemFont(11);
+  unitText.textColor = new Color(numColor);
+
+  widget.addSpacer(6);
+
+  // 进度条
+  const progressImg = drawProgressBar(data.usedPercent, 130, 4.5, isLow ? '#FF3B30' : null);
+  const progressWidgetImg = widget.addImage(progressImg);
+  progressWidgetImg.imageSize = new Size(130, 4.5);
+  progressWidgetImg.resizable = true;
+
+  widget.addSpacer(7);
+
+  // 底部用量
+  const footRow = widget.addStack();
+  footRow.layoutHorizontally();
+  footRow.centerAlignContent();
+
+  const subText = footRow.addText(`用 ${data.usedGB} / ${data.totalGB}G`);
+  subText.font = Font.systemFont(9);
+  subText.textColor = new Color('#8E8E93');
+
+  footRow.addSpacer();
+
+  const pctText = footRow.addText(`${data.usedPercent}%`);
+  pctText.font = Font.systemFont(9);
+  pctText.textColor = new Color('#8E8E93');
+}
+
+// 双账号 - 小号小组件 (Small 上下双卡片堆叠设计)
+function renderDualSmallWidget(widget, accounts, summary) {
+  for (let i = 0; i < 2; i++) {
+    const acc = accounts[i];
+    if (!acc) continue;
+
+    const isLow = acc.remainingGB < 5 || acc.usedPercent > 90;
+    const numColor = isLow ? '#FF3B30' : (acc.remainingGB < 20 ? '#FF9500' : '#10B981');
+
+    // 账号专属轻量圆角卡片
+    const card = widget.addStack();
+    card.layoutVertically();
+    card.backgroundColor = new Color('#F6F7F9');
+    card.cornerRadius = 8;
+    card.setPadding(7, 8, 7, 8);
+
+    // 行 1: 标签 + 剩余量 + 重置天数
+    const r1 = card.addStack();
+    r1.layoutHorizontally();
+    r1.centerAlignContent();
+
+    const tag = r1.addStack();
+    tag.backgroundColor = new Color('#E5E7EB');
+    tag.cornerRadius = 3;
+    tag.setPadding(1, 4, 1, 4);
+    const tagT = tag.addText(`A${i + 1}`);
+    tagT.font = Font.boldSystemFont(8.5);
+    tagT.textColor = new Color('#374151');
+
+    r1.addSpacer(4);
+
+    const remT = r1.addText(`余${acc.remainingGB}G`);
+    remT.font = Font.boldSystemFont(11);
+    remT.textColor = new Color(numColor);
+
+    r1.addSpacer();
+
+    const rstT = r1.addText(`${acc.resetDaysLeft}d`);
+    rstT.font = Font.systemFont(8.5);
+    rstT.textColor = new Color('#8E8E93');
+
+    card.addSpacer(4);
+
+    // 行 2: 细进度条 + 百分比
+    const r2 = card.addStack();
+    r2.layoutHorizontally();
+    r2.centerAlignContent();
+    r2.spacing = 4;
+
+    const pbW = 90;
+    const pb = drawProgressBar(acc.usedPercent, pbW, 3.5, isLow ? '#FF3B30' : null);
+    const pbImg = r2.addImage(pb);
+    pbImg.imageSize = new Size(pbW, 3.5);
+    pbImg.resizable = true;
+
+    r2.addSpacer();
+
+    const pct = r2.addText(`${acc.usedPercent}%`);
+    pct.font = Font.systemFont(8);
+    pct.textColor = new Color('#8E8E93');
+
+    card.addSpacer(3);
+
+    // 行 3: 配额一览
+    const r3 = card.addStack();
+    r3.layoutHorizontally();
+    r3.centerAlignContent();
+
+    const usedT = r3.addText(`用 ${acc.usedGB} / ${acc.totalGB}G`);
+    usedT.font = Font.systemFont(8);
+    usedT.textColor = new Color('#8E8E93');
+
+    if (i === 0) {
+      widget.addSpacer(6);
+    }
+  }
+}
+
+// ================= 中号组件渲染 (Medium) =================
+
+// 单账号 - 中号小组件 (Medium 经典单账号看板)
 function renderMediumWidget(widget, data) {
-  const isTodayWarning = data.dailyStats && data.dailyStats.isTodayWarning;
+  const isLow = data.remainingGB < 5 || data.usedPercent > 90;
+  const numColor = isLow ? '#FF3B30' : (data.remainingGB < 20 ? '#FF9500' : '#10B981');
 
-  // 1. 顶部栏：套餐名称 + 重置提醒气泡 / 今日超量预警胶囊
+  // 顶部行：套餐名 + 重置天数
+  const topRow = widget.addStack();
+  topRow.layoutHorizontally();
+  topRow.centerAlignContent();
+
+  const titleText = topRow.addText(data.planName);
+  titleText.font = Font.boldSystemFont(13.5);
+  titleText.textColor = new Color('#1C1C1E');
+
+  topRow.addSpacer();
+
+  const resetBadge = topRow.addStack();
+  resetBadge.backgroundColor = new Color('#F2F4F7');
+  resetBadge.cornerRadius = 5;
+  resetBadge.setPadding(2, 6, 2, 6);
+  const resetText = resetBadge.addText(`${data.resetDaysLeft}天后重置`);
+  resetText.font = Font.mediumSystemFont(9.5);
+  resetText.textColor = new Color('#007AFF');
+
+  widget.addSpacer(6);
+
+  // 主体行：左侧关键指标 + 右侧每日热力图
+  const bodyRow = widget.addStack();
+  bodyRow.layoutHorizontally();
+  bodyRow.centerAlignContent();
+  bodyRow.spacing = 10;
+
+  // 左侧卡片
+  const leftCard = bodyRow.addStack();
+  leftCard.layoutVertically();
+  leftCard.backgroundColor = new Color('#F6F7F9');
+  leftCard.cornerRadius = 10;
+  leftCard.setPadding(9, 10, 9, 10);
+  leftCard.size = new Size(115, 86);
+
+  const remLbl = leftCard.addText('剩余流量');
+  remLbl.font = Font.systemFont(9);
+  remLbl.textColor = new Color('#8E8E93');
+
+  leftCard.addSpacer(2);
+
+  const valStack = leftCard.addStack();
+  valStack.layoutHorizontally();
+  valStack.bottomAlignContent();
+
+  const remVal = valStack.addText(`${data.remainingGB}`);
+  remVal.font = Font.boldSystemFont(19);
+  remVal.textColor = new Color(numColor);
+
+  valStack.addSpacer(2);
+  const unit = valStack.addText('GB');
+  unit.font = Font.boldSystemFont(9.5);
+  unit.textColor = new Color(numColor);
+
+  leftCard.addSpacer(4);
+
+  const pbImg = drawProgressBar(data.usedPercent, 95, 4, isLow ? '#FF3B30' : null);
+  const pbWidget = leftCard.addImage(pbImg);
+  pbWidget.imageSize = new Size(95, 4);
+  pbWidget.resizable = true;
+
+  leftCard.addSpacer(4);
+
+  const usedT = leftCard.addText(`已用 ${data.usedPercent}%`);
+  usedT.font = Font.systemFont(8.5);
+  usedT.textColor = new Color('#8E8E93');
+
+  // 右侧热力图
+  const rightStack = bodyRow.addStack();
+  rightStack.layoutVertically();
+
+  const chartW = getMediumChartWidth() - 125;
+  const chartH = 86;
+  if (data.dailyStats && data.dailyStats.days && data.dailyStats.days.length > 0) {
+    const heatImg = drawMonthHeatmapChart(data.dailyStats, chartW, chartH);
+    const heatWidget = rightStack.addImage(heatImg);
+    heatWidget.imageSize = new Size(chartW, chartH);
+    heatWidget.resizable = true;
+  }
+}
+
+// 双账号 - 中号小组件 (Medium 左右双卡片分栏仪表盘，去除非必要进度条)
+function renderDualMediumWidget(widget, accounts, summary) {
+  const fullW = getMediumChartWidth();
+  const cardsSpacing = 8;
+  const cardW = Math.floor((fullW - cardsSpacing) / 2);
+  const cardInnerW = cardW - 16;
+  const chartH = 86;
+
+  // 左右双卡片水平容器
+  const cardsContainer = widget.addStack();
+  cardsContainer.layoutHorizontally();
+  cardsContainer.spacing = cardsSpacing;
+
+  for (let i = 0; i < 2; i++) {
+    const acc = accounts[i];
+    if (!acc) continue;
+
+    const isLow = acc.remainingGB < 5 || acc.usedPercent > 90;
+    const numColor = isLow ? '#FF3B30' : (acc.remainingGB < 20 ? '#FF9500' : '#10B981');
+
+    // 账号专属圆角卡片
+    const card = cardsContainer.addStack();
+    card.layoutVertically();
+    card.backgroundColor = new Color('#F6F7F9');
+    card.cornerRadius = 10;
+    card.setPadding(8, 8, 8, 8);
+
+    // 1. 卡片顶部：账号标识 + 剩余流量 + 重置天数
+    const cardHeader = card.addStack();
+    cardHeader.layoutHorizontally();
+    cardHeader.centerAlignContent();
+
+    const tagStack = cardHeader.addStack();
+    tagStack.backgroundColor = new Color('#E5E7EB');
+    tagStack.cornerRadius = 3.5;
+    tagStack.setPadding(1, 4, 1, 4);
+    const tagText = tagStack.addText(`A${i + 1}`);
+    tagText.font = Font.boldSystemFont(8.5);
+    tagText.textColor = new Color('#374151');
+
+    cardHeader.addSpacer(4);
+
+    const remVal = cardHeader.addText(`余${acc.remainingGB}G`);
+    remVal.font = Font.boldSystemFont(11.5);
+    remVal.textColor = new Color(numColor);
+
+    cardHeader.addSpacer();
+
+    const resetLbl = cardHeader.addText(`${acc.resetDaysLeft}天重置`);
+    resetLbl.font = Font.systemFont(8.5);
+    resetLbl.textColor = new Color('#8E8E93');
+
+    card.addSpacer(5);
+
+    // 2. 专属每日用量热力图 (居中舒展，无进度条折行干扰)
+    if (acc.dailyStats && acc.dailyStats.days && acc.dailyStats.days.length > 0) {
+      const chartImg = drawMonthHeatmapChart(acc.dailyStats, cardInnerW, chartH);
+      const chartWidgetImg = card.addImage(chartImg);
+      chartWidgetImg.imageSize = new Size(cardInnerW, chartH);
+      chartWidgetImg.resizable = true;
+    } else {
+      const pbImg = drawProgressBar(acc.usedPercent || 0, cardInnerW, 8);
+      const pbWidgetImg = card.addImage(pbImg);
+      pbWidgetImg.imageSize = new Size(cardInnerW, 8);
+      pbWidgetImg.resizable = true;
+    }
+  }
+}
+
+// ================= 双账号专属组件渲染 =================
+
+// 双账号 - 大号小组件 (Large 专属全景仪表盘：顶部汇总 + 中部双指标卡片 + 下部双账号并排热力图 + 底部状态栏)
+function renderDualLargeWidget(widget, accounts, summary) {
+  const fullW = getWidgetChartWidth('large');
+  const cardsSpacing = 8;
+  const halfW = Math.floor((fullW - cardsSpacing) / 2);
+  const cardInnerW = halfW - 16;
+  const acc1 = accounts[0];
+  const acc2 = accounts[1];
+
+  // 1. 顶部简洁汇总行
   const headerStack = widget.addStack();
   headerStack.layoutHorizontally();
   headerStack.centerAlignContent();
 
-  const titleText = headerStack.addText(data.planName);
-  titleText.font = Font.boldSystemFont(14);
+  const titleText = headerStack.addText('流量监控');
+  titleText.font = Font.boldSystemFont(15);
   titleText.textColor = new Color('#1C1C1E');
-  titleText.lineLimit = 1;
 
   headerStack.addSpacer();
 
-  const resetStack = headerStack.addStack();
-  if (isTodayWarning) {
-    resetStack.backgroundColor = new Color('#FFF1F0');
-    resetStack.cornerRadius = 6;
-    resetStack.setPadding(2, 7, 2, 7);
+  const badge = headerStack.addStack();
+  badge.backgroundColor = new Color('#F2F4F7');
+  badge.cornerRadius = 6;
+  badge.setPadding(3, 8, 3, 8);
+  const badgeText = badge.addText(`双账号 · ${summary.minResetDays}天后重置`);
+  badgeText.font = Font.mediumSystemFont(11);
+  badgeText.textColor = new Color('#007AFF');
 
-    const alertText = resetStack.addText(`⚠️ 今日已用 ${data.dailyStats.todayGB}G`);
-    alertText.font = Font.boldSystemFont(10);
-    alertText.textColor = new Color('#FF3B30');
-  } else {
-    resetStack.backgroundColor = new Color('#F2F4F7');
-    resetStack.cornerRadius = 6;
-    resetStack.setPadding(2, 7, 2, 7);
+  widget.addSpacer(10);
 
-    const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
-    resetText.font = Font.systemFont(10);
-    resetText.textColor = new Color('#007AFF');
+  // 2. 中部：双账号指标对比卡片 (左右并列)
+  const compareStack = widget.addStack();
+  compareStack.layoutHorizontally();
+  compareStack.spacing = cardsSpacing;
+
+  for (let i = 0; i < 2; i++) {
+    const acc = accounts[i];
+    if (!acc) continue;
+
+    const isLow = acc.remainingGB < 5 || acc.usedPercent > 90;
+    const numColor = isLow ? '#FF3B30' : (acc.remainingGB < 20 ? '#FF9500' : '#10B981');
+    const isTodayWarn = acc.dailyStats && acc.dailyStats.isTodayWarning;
+
+    const card = compareStack.addStack();
+    card.layoutVertically();
+    card.backgroundColor = new Color('#F6F7F9');
+    card.cornerRadius = 11;
+    card.setPadding(11, 11, 11, 11);
+
+    // 卡片顶部：A1 / A2 标 + 重置天数
+    const r1 = card.addStack();
+    r1.layoutHorizontally();
+    r1.centerAlignContent();
+
+    const tag = r1.addStack();
+    tag.backgroundColor = new Color('#E5E7EB');
+    tag.cornerRadius = 4;
+    tag.setPadding(2, 6, 2, 6);
+    const tagT = tag.addText(`A${i + 1}`);
+    tagT.font = Font.boldSystemFont(9.5);
+    tagT.textColor = new Color('#374151');
+
+    r1.addSpacer();
+
+    const rst = r1.addText(`${acc.resetDaysLeft}天后重置`);
+    rst.font = Font.systemFont(9.5);
+    rst.textColor = new Color('#8E8E93');
+
+    card.addSpacer(7);
+
+    // 核心剩余大字
+    const valRow = card.addStack();
+    valRow.layoutHorizontally();
+    valRow.bottomAlignContent();
+
+    const remLbl = valRow.addText('剩余 ');
+    remLbl.font = Font.systemFont(10.5);
+    remLbl.textColor = new Color('#8E8E93');
+
+    const numVal = valRow.addText(`${acc.remainingGB}`);
+    numVal.font = Font.boldSystemFont(22);
+    numVal.textColor = new Color(numColor);
+
+    valRow.addSpacer(2);
+    const unitLbl = valRow.addText('GB');
+    unitLbl.font = Font.boldSystemFont(10.5);
+    unitLbl.textColor = new Color(numColor);
+
+    valRow.addSpacer();
+
+    const pctLbl = valRow.addText(`${acc.usedPercent}%`);
+    pctLbl.font = Font.mediumSystemFont(10);
+    pctLbl.textColor = new Color('#8E8E93');
+
+    card.addSpacer(6);
+
+    // 进度条
+    const pbImg = drawProgressBar(acc.usedPercent, cardInnerW, 5.5, isLow ? '#FF3B30' : null);
+    const pbWidget = card.addImage(pbImg);
+    pbWidget.imageSize = new Size(cardInnerW, 5.5);
+    pbWidget.resizable = true;
+
+    card.addSpacer(7);
+
+    // 底部用量与今日统计
+    const r2 = card.addStack();
+    r2.layoutHorizontally();
+    r2.centerAlignContent();
+
+    const quotaLbl = r2.addText(`用 ${acc.usedGB} / ${acc.totalGB}G`);
+    quotaLbl.font = Font.systemFont(9.5);
+    quotaLbl.textColor = new Color('#8E8E93');
+
+    r2.addSpacer();
+
+    if (acc.dailyStats && acc.dailyStats.todayGB !== undefined) {
+      const todayLbl = r2.addText(`今日 ${acc.dailyStats.todayGB}G`);
+      todayLbl.font = Font.systemFont(9.5);
+      todayLbl.textColor = isTodayWarn ? new Color('#FF3B30') : new Color('#8E8E93');
+    }
   }
 
-  widget.addSpacer(6);
+  widget.addSpacer(10);
 
-  // 2. 核心图表区域 (1:1 点对点高清晰度渲染，空间扩大近 50%)
-  const chartW = getWidgetChartWidth('medium');
-  const chartH = getWidgetChartHeight('medium');
-  if (data.dailyStats && data.dailyStats.days && data.dailyStats.days.length > 0) {
-    const chartImg = drawDailyTrafficChart(data.dailyStats, chartW, chartH, CONFIG.chart_type);
-    const chartWidgetImg = widget.addImage(chartImg);
-    chartWidgetImg.imageSize = new Size(chartW, chartH);
-    chartWidgetImg.resizable = true;
-  } else {
-    // 降级使用普通进度条
-    const progressImg = drawProgressBar(data.usedPercent, chartW, 12);
-    const progressWidgetImg = widget.addImage(progressImg);
-    progressWidgetImg.imageSize = new Size(chartW, 12);
-    progressWidgetImg.resizable = true;
+  // 3. 下部：双账号每日用量双热力图 (左右并列，高度充盈)
+  const chartsStack = widget.addStack();
+  chartsStack.layoutHorizontally();
+  chartsStack.spacing = cardsSpacing;
+
+  const chartH = 136;
+
+  for (let i = 0; i < 2; i++) {
+    const acc = accounts[i];
+    if (!acc) continue;
+
+    const chartCard = chartsStack.addStack();
+    chartCard.layoutVertically();
+    chartCard.backgroundColor = new Color('#F6F7F9');
+    chartCard.cornerRadius = 11;
+    chartCard.setPadding(8, 8, 8, 8);
+
+    if (acc.dailyStats && acc.dailyStats.days && acc.dailyStats.days.length > 0) {
+      const chartImg = drawDailyTrafficChart(acc.dailyStats, cardInnerW, chartH, CONFIG.chart_type);
+      const chartWidgetImg = chartCard.addImage(chartImg);
+      chartWidgetImg.imageSize = new Size(cardInnerW, chartH);
+      chartWidgetImg.resizable = true;
+    } else {
+      const pbImg = drawProgressBar(acc.usedPercent || 0, cardInnerW, 10);
+      const pbWidgetImg = chartCard.addImage(pbImg);
+      pbWidgetImg.imageSize = new Size(cardInnerW, 10);
+      pbWidgetImg.resizable = true;
+    }
   }
 
-  widget.addSpacer(6);
+  widget.addSpacer(10);
 
-  // 4. 底部栏：到期时间与刷新状态
+  // 4. 底部轻量状态栏 (消除底部空旷留白)
   const footerStack = widget.addStack();
   footerStack.layoutHorizontally();
   footerStack.centerAlignContent();
 
-  const expireLabel = isTodayWarning ? `到期: ${data.expireDateStr} · ${data.resetDaysLeft}天后重置` : `到期: ${data.expireDateStr}`;
-  const expireText = footerStack.addText(expireLabel);
-  expireText.font = Font.systemFont(9);
-  expireText.textColor = new Color('#8E8E93');
+  const now = new Date();
+  const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const syncText = footerStack.addText(`更新于 ${timeStr}`);
+  syncText.font = Font.systemFont(9);
+  syncText.textColor = new Color('#8E8E93');
 
   footerStack.addSpacer();
 
-  renderStatusBadge(footerStack, data, false);
+  const statusStack = footerStack.addStack();
+  statusStack.layoutHorizontally();
+  statusStack.centerAlignContent();
+  const dot = statusStack.addText('● ');
+  dot.font = Font.systemFont(7.5);
+  dot.textColor = new Color('#10B981');
+  const statusText = statusStack.addText('数据已同步');
+  statusText.font = Font.systemFont(9);
+  statusText.textColor = new Color('#8E8E93');
 }
 
 // 大号小组件 (Large 完整五段式高质感数据看板)
 function renderLargeWidget(widget, data) {
-  const chartW = getWidgetChartWidth('large');
+  const chartW = getWidgetChartWidth();
   const isTodayWarning = data.dailyStats && data.dailyStats.isTodayWarning;
 
   // 1. 顶部栏：套餐名称 + 重置倒计时 / 超量警示胶囊
@@ -1248,14 +1810,14 @@ function renderLargeWidget(widget, data) {
       const lbl = col.addText(items[i].label);
       lbl.font = Font.systemFont(9);
       lbl.textColor = new Color('#8E8E93');
-      lbl.centerAlignText();
+      if (typeof lbl.centerAlignText === 'function') lbl.centerAlignText();
 
       col.addSpacer(3);
 
       const val = col.addText(items[i].val);
       val.font = Font.boldSystemFont(13);
       val.textColor = new Color(items[i].color);
-      val.centerAlignText();
+      if (typeof val.centerAlignText === 'function') val.centerAlignText();
 
       if (i < items.length - 1) {
         gridStack.addSpacer();
@@ -1282,10 +1844,10 @@ function renderLargeWidget(widget, data) {
   chartSub.font = Font.systemFont(10);
   chartSub.textColor = new Color('#8E8E93');
 
-  widget.addSpacer(4);
+  widget.addSpacer(6);
 
   // 1:1 大尺寸高清图表 (100% 满宽自适应)
-  const chartH = 120;
+  const chartH = 145;
   if (daily && daily.days && daily.days.length > 0) {
     const chartImg = drawDailyTrafficChart(daily, chartW, chartH, CONFIG.chart_type);
     const chartWidgetImg = widget.addImage(chartImg);
@@ -1299,7 +1861,7 @@ function renderLargeWidget(widget, data) {
     progressWidgetImg.resizable = true;
   }
 
-  widget.addSpacer(7);
+  widget.addSpacer(9);
 
   // 5. 底部状态栏
   const footerStack = widget.addStack();
@@ -1316,305 +1878,6 @@ function renderLargeWidget(widget, data) {
   renderStatusBadge(footerStack, data, false);
 }
 
-// iPad 超大号小组件 (ExtraLarge 左右双栏视野)
-function renderExtraLargeWidget(widget, data) {
-  const container = widget.addStack();
-  container.layoutHorizontally();
-  container.centerAlignContent();
-
-  // 左栏：资产卡片与核心指标
-  const leftCol = container.addStack();
-  leftCol.layoutVertically();
-
-  const isTodayWarning = data.dailyStats && data.dailyStats.isTodayWarning;
-
-  const headerStack = leftCol.addStack();
-  headerStack.layoutHorizontally();
-  headerStack.centerAlignContent();
-
-  const titleText = headerStack.addText(data.planName);
-  titleText.font = Font.boldSystemFont(16);
-  titleText.textColor = new Color('#1C1C1E');
-
-  headerStack.addSpacer();
-
-  const resetStack = headerStack.addStack();
-  if (isTodayWarning) {
-    resetStack.backgroundColor = new Color('#FFF1F0');
-    resetStack.cornerRadius = 6;
-    resetStack.setPadding(3, 8, 3, 8);
-    const alertText = resetStack.addText(`⚠️ 今日已用 ${data.dailyStats.todayGB}G`);
-    alertText.font = Font.boldSystemFont(11);
-    alertText.textColor = new Color('#FF3B30');
-  } else {
-    resetStack.backgroundColor = new Color('#F2F4F7');
-    resetStack.cornerRadius = 6;
-    resetStack.setPadding(3, 8, 3, 8);
-    const resetText = resetStack.addText(`${data.resetDaysLeft} 天后重置`);
-    resetText.font = Font.systemFont(11);
-    resetText.textColor = new Color('#007AFF');
-  }
-
-  leftCol.addSpacer(12);
-
-  const heroCard = leftCol.addStack();
-  heroCard.layoutVertically();
-  heroCard.backgroundColor = new Color('#F8F9FA');
-  heroCard.cornerRadius = 10;
-  heroCard.setPadding(12, 14, 12, 14);
-
-  const remLabel = heroCard.addText('剩余可用流量');
-  remLabel.font = Font.systemFont(12);
-  remLabel.textColor = new Color('#8E8E93');
-
-  heroCard.addSpacer(4);
-
-  const valStack = heroCard.addStack();
-  valStack.layoutHorizontally();
-  valStack.bottomAlignContent();
-
-  const remVal = valStack.addText(data.remainingGB);
-  remVal.font = Font.boldSystemFont(36);
-  remVal.textColor = new Color('#10B981');
-
-  valStack.addSpacer(4);
-  const unitText = valStack.addText('GB');
-  unitText.font = Font.boldSystemFont(16);
-  unitText.textColor = new Color('#10B981');
-
-  heroCard.addSpacer(10);
-
-  const subText = heroCard.addText(`已用 ${data.usedGB} / ${data.totalGB} GB (${data.usedPercent}%)`);
-  subText.font = Font.systemFont(12);
-  subText.textColor = new Color('#1C1C1E');
-
-  heroCard.addSpacer(6);
-
-  const progressImg = drawProgressBar(data.usedPercent, 282, 8);
-  const progressWidgetImg = heroCard.addImage(progressImg);
-  progressWidgetImg.imageSize = new Size(282, 8);
-  progressWidgetImg.resizable = true;
-
-  leftCol.addSpacer(12);
-
-  // 4 宫格
-  const daily = data.dailyStats;
-  if (daily) {
-    const gridStack = leftCol.addStack();
-    gridStack.layoutHorizontally();
-    gridStack.centerAlignContent();
-
-    const isMaxWarning = daily.isMaxDayWarning;
-    const items = [
-      {
-        label: isTodayWarning ? '今日已用 ⚠️' : '今日已用',
-        val: `${daily.todayGB}G`,
-        color: isTodayWarning ? '#FF3B30' : '#007AFF'
-      },
-      { label: '剩余天数', val: `${data.resetDaysLeft}天`, color: '#1C1C1E' },
-      {
-        label: isMaxWarning ? '单日最高 ⚠️' : '单日最高',
-        val: `${daily.maxGB}G`,
-        color: isMaxWarning ? '#FF3B30' : '#FF9500'
-      },
-      { label: '周期累计', val: `${daily.cycleTotalGB || daily.monthTotalGB}G`, color: '#1C1C1E' }
-    ];
-
-    for (let i = 0; i < items.length; i++) {
-      const col = gridStack.addStack();
-      col.layoutVertically();
-      col.backgroundColor = new Color('#F8F9FA');
-      col.cornerRadius = 8;
-      col.setPadding(6, 8, 6, 8);
-
-      const lbl = col.addText(items[i].label);
-      lbl.font = Font.systemFont(9);
-      lbl.textColor = new Color('#8E8E93');
-      lbl.centerAlignText();
-
-      col.addSpacer(2);
-
-      const val = col.addText(items[i].val);
-      val.font = Font.boldSystemFont(12);
-      val.textColor = new Color(items[i].color);
-      val.centerAlignText();
-
-      if (i < items.length - 1) gridStack.addSpacer();
-    }
-  }
-
-  leftCol.addSpacer(12);
-
-  const footerStack = leftCol.addStack();
-  footerStack.layoutHorizontally();
-  footerStack.centerAlignContent();
-
-  const expireText = footerStack.addText(`到期: ${data.expireDateStr}`);
-  expireText.font = Font.systemFont(10);
-  expireText.textColor = new Color('#8E8E93');
-  footerStack.addSpacer();
-  renderStatusBadge(footerStack, data, false);
-
-  container.addSpacer(20);
-
-  // 右栏：宽幅超大图表
-  const rightCol = container.addStack();
-  rightCol.layoutVertically();
-
-  const xlCycleTitle = daily && daily.cycleRangeLabel ? ` (${daily.cycleRangeLabel})` : '';
-  const chartTitle = rightCol.addText(`周期每日用量趋势${xlCycleTitle}`);
-  chartTitle.font = Font.boldSystemFont(14);
-  chartTitle.textColor = new Color('#1C1C1E');
-
-  rightCol.addSpacer(8);
-
-  if (daily) {
-    const chartW = 340;
-    const chartH = 190;
-    const chartImg = drawDailyTrafficChart(daily, chartW, chartH, CONFIG.chart_type);
-    const chartWidgetImg = rightCol.addImage(chartImg);
-    chartWidgetImg.imageSize = new Size(chartW, chartH);
-    chartWidgetImg.resizable = true;
-  }
-}
-
-// 锁屏矩形小组件 (Accessory Rectangular, iOS 16+)
-function renderAccessoryRectangular(widget, data) {
-  const titleText = widget.addText(data.planName);
-  titleText.font = Font.boldSystemFont(11);
-  titleText.lineLimit = 1;
-
-  widget.addSpacer(2);
-
-  const valStack = widget.addStack();
-  valStack.layoutHorizontally();
-  valStack.bottomAlignContent();
-
-  const remVal = valStack.addText(`剩余 ${data.remainingGB}`);
-  remVal.font = Font.boldSystemFont(15);
-
-  valStack.addSpacer(2);
-
-  const unitText = valStack.addText('GB');
-  unitText.font = Font.systemFont(10);
-
-  widget.addSpacer(2);
-
-  const daily = data.dailyStats;
-  let infoStr = '';
-  if (daily) {
-    const prefix = daily.isTodayWarning ? '⚠️ ' : '';
-    infoStr = `${prefix}今日 ${daily.todayGB}G · ${data.resetDaysLeft}天后重置`;
-  } else {
-    infoStr = `${data.resetDaysLeft}天后重置 · 已用${data.usedPercent}%`;
-  }
-  const infoText = widget.addText(infoStr);
-  infoText.font = Font.systemFont(9);
-  infoText.lineLimit = 1;
-}
-
-// 锁屏圆形小组件 (Accessory Circular, iOS 16+)
-function renderAccessoryCircular(widget, data) {
-  const centerStack = widget.addStack();
-  centerStack.layoutVertically();
-  centerStack.centerAlignContent();
-
-  const numText = centerStack.addText(data.remainingGB);
-  numText.font = Font.boldSystemFont(12);
-  numText.centerAlignText();
-
-  const unitText = centerStack.addText('GB');
-  unitText.font = Font.systemFont(9);
-  unitText.centerAlignText();
-
-  const resetText = centerStack.addText(`${data.resetDaysLeft}d`);
-  resetText.font = Font.systemFont(8);
-  resetText.centerAlignText();
-}
-
-// 锁屏单行小组件 (Accessory Inline, iOS 16+)
-function renderAccessoryInline(widget, data) {
-  const daily = data.dailyStats;
-  let text = '';
-  if (daily) {
-    const prefix = daily.isTodayWarning ? '⚠️ ' : '';
-    text = `${prefix}今日 ${daily.todayGB}G · 剩余 ${data.remainingGB}G`;
-  } else {
-    text = `剩余 ${data.remainingGB}GB · ${data.resetDaysLeft}天重置`;
-  }
-  const inlineText = widget.addText(text);
-  inlineText.font = Font.systemFont(12);
-}
-
-// 小号小组件 (Small 紧凑视图)
-function renderSmallWidget(widget, data) {
-  const titleText = widget.addText(data.planName);
-  titleText.font = Font.boldSystemFont(12);
-  titleText.textColor = new Color('#1C1C1E');
-  titleText.lineLimit = 1;
-
-  widget.addSpacer(5);
-
-  const remLabel = widget.addText('剩余流量');
-  remLabel.font = Font.systemFont(10);
-  remLabel.textColor = new Color('#8E8E93');
-
-  widget.addSpacer(2);
-
-  const valStack = widget.addStack();
-  valStack.layoutHorizontally();
-  valStack.bottomAlignContent();
-
-  const remVal = valStack.addText(data.remainingGB);
-  remVal.font = Font.boldSystemFont(26);
-  remVal.textColor = new Color('#10B981');
-
-  valStack.addSpacer(2);
-
-  const unitStack = valStack.addStack();
-  unitStack.layoutVertically();
-  const unitText = unitStack.addText('GB');
-  unitText.font = Font.boldSystemFont(12);
-  unitText.textColor = new Color('#10B981');
-  unitStack.addSpacer(3);
-
-  widget.addSpacer(5);
-
-  // 进度条
-  const progressImg = drawProgressBar(data.usedPercent, 200, 7);
-  const progressWidgetImg = widget.addImage(progressImg);
-  progressWidgetImg.resizable = true;
-
-  widget.addSpacer(5);
-
-  // 紧凑每日用量信息
-  const daily = data.dailyStats;
-  if (daily) {
-    const isWarn = daily.isTodayWarning;
-    const dailyText = widget.addText(isWarn ? `⚠️ 今日已用 ${daily.todayGB}G (已超标)` : `今日 ${daily.todayGB}G · 周期日均 ${daily.avgGB}G`);
-    dailyText.font = isWarn ? Font.boldSystemFont(9) : Font.systemFont(9);
-    dailyText.textColor = isWarn ? new Color('#FF3B30') : new Color('#8E8E93');
-  } else {
-    const subText = widget.addText(`共 ${data.totalGB} GB · ${data.resetDaysLeft}天后重置`);
-    subText.font = Font.systemFont(9);
-    subText.textColor = new Color('#8E8E93');
-  }
-
-  widget.addSpacer();
-
-  const footerStack = widget.addStack();
-  footerStack.layoutHorizontally();
-  footerStack.centerAlignContent();
-
-  const expireText = footerStack.addText(`到期: ${data.expireDateStr}`);
-  expireText.font = Font.systemFont(9);
-  expireText.textColor = new Color('#8E8E93');
-
-  footerStack.addSpacer();
-
-  renderStatusBadge(footerStack, data, true);
-}
-
 // 错误提示组件
 function renderErrorWidget(widget, message = '服务不可用') {
   widget.addSpacer();
@@ -1625,14 +1888,14 @@ function renderErrorWidget(widget, message = '服务不可用') {
   const titleText = centerStack.addText(message);
   titleText.font = Font.boldSystemFont(14);
   titleText.textColor = new Color('#FF3B30');
-  titleText.centerAlignText();
+  if (typeof titleText.centerAlignText === 'function') titleText.centerAlignText();
 
   centerStack.addSpacer(4);
 
   const descText = centerStack.addText('暂无法获取订阅数据');
   descText.font = Font.systemFont(10);
   descText.textColor = new Color('#8E8E93');
-  descText.centerAlignText();
+  if (typeof descText.centerAlignText === 'function') descText.centerAlignText();
   widget.addSpacer();
 }
 
