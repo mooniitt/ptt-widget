@@ -769,7 +769,7 @@ function drawMonthHeatmapChart(dailyStats, width = 328, height = 78) {
   const gridH = totalRows * cellSize + (totalRows - 1) * gap;
   const gridW = 7 * cellSize + 6 * gap;
 
-  const gridStartX = 6;
+  const gridStartX = isCompact ? Math.max(2, Math.floor((width - gridW) / 2)) : 6;
   const heatTotalW = gridStartX + gridW;
   const weekHeaderY = topH + 2;
   const gridY = weekHeaderY + weekHeaderH + 2;
@@ -1205,107 +1205,96 @@ function renderStatusBadge(stack, data, isSmall = false) {
 
 // ================= 双账号专属组件渲染 =================
 
-// 双账号 - 中号小组件 (Medium 紧凑双账号摘要 + 双账号每日用量图表)
+// 双账号 - 中号小组件 (Medium 左右双卡片分栏仪表盘)
 function renderDualMediumWidget(widget, accounts, summary) {
-  // 1. 顶部行：双账号胶囊 + 总余量
-  const headerStack = widget.addStack();
-  headerStack.layoutHorizontally();
-  headerStack.centerAlignContent();
+  const fullW = getWidgetChartWidth('medium');
+  const cardsSpacing = 8;
+  const cardW = Math.floor((fullW - cardsSpacing) / 2);
+  const cardInnerW = cardW - 16; // 左右 padding 各 8
+  const chartH = 72;
+
+  // 左右双卡片水平容器
+  const cardsContainer = widget.addStack();
+  cardsContainer.layoutHorizontally();
+  cardsContainer.spacing = cardsSpacing;
 
   for (let i = 0; i < 2; i++) {
     const acc = accounts[i];
     if (!acc) continue;
 
     const isLow = acc.remainingGB < 5 || acc.usedPercent > 90;
-    const pill = headerStack.addStack();
-    pill.layoutHorizontally();
-    pill.centerAlignContent();
-    pill.backgroundColor = new Color(isLow ? '#FFF1F0' : '#F2F4F7');
-    pill.cornerRadius = 5;
-    pill.setPadding(2, 6, 2, 6);
-    pill.spacing = 3;
+    const numColor = isLow ? '#FF3B30' : (acc.remainingGB < 20 ? '#FF9500' : '#10B981');
 
-    const nameT = pill.addText(`A${i + 1}`);
-    nameT.font = Font.mediumSystemFont(9.5);
-    nameT.textColor = new Color('#1C1C1E');
+    // 账号专属卡片容器
+    const card = cardsContainer.addStack();
+    card.layoutVertically();
+    card.backgroundColor = new Color('#F6F7F9');
+    card.cornerRadius = 10;
+    card.setPadding(7, 8, 7, 8);
 
-    const remT = pill.addText(`余${acc.remainingGB}G`);
-    remT.font = Font.boldSystemFont(9.5);
-    remT.textColor = new Color(isLow ? '#FF3B30' : '#10B981');
+    // 1. 卡片顶部：账号标识 + 剩余流量 + 重置天数
+    const cardHeader = card.addStack();
+    cardHeader.layoutHorizontally();
+    cardHeader.centerAlignContent();
 
-    if (i === 0) headerStack.addSpacer(4);
-  }
+    // 账号标签 (A1 / A2)
+    const tagStack = cardHeader.addStack();
+    tagStack.backgroundColor = new Color('#E5E7EB');
+    tagStack.cornerRadius = 3.5;
+    tagStack.setPadding(1, 4, 1, 4);
+    const tagText = tagStack.addText(`A${i + 1}`);
+    tagText.font = Font.boldSystemFont(8.5);
+    tagText.textColor = new Color('#374151');
 
-  headerStack.addSpacer();
+    cardHeader.addSpacer(4);
 
-  widget.addSpacer(5);
+    // 剩余流量数值
+    const remVal = cardHeader.addText(`余${acc.remainingGB}G`);
+    remVal.font = Font.boldSystemFont(11.5);
+    remVal.textColor = new Color(numColor);
 
-  // 2. 双账号进度条
-  for (let i = 0; i < 2; i++) {
-    const acc = accounts[i];
-    if (!acc) continue;
-    const isLow = acc.remainingGB < 5 || acc.usedPercent > 90;
+    cardHeader.addSpacer();
 
-    const barRow = widget.addStack();
-    barRow.layoutHorizontally();
-    barRow.centerAlignContent();
-    barRow.spacing = 5;
+    // 重置天数
+    const resetLbl = cardHeader.addText(`${acc.resetDaysLeft}天重置`);
+    resetLbl.font = Font.systemFont(8.5);
+    resetLbl.textColor = new Color('#8E8E93');
 
-    const chartW = getWidgetChartWidth('medium');
-    const pbImg = drawProgressBar(acc.usedPercent, chartW - 40, 4, isLow ? '#FF3B30' : null);
-    const pbWidget = barRow.addImage(pbImg);
-    pbWidget.imageSize = new Size(chartW - 40, 4);
+    card.addSpacer(3);
+
+    // 2. 迷你进度条行 (内嵌在各自卡片中)
+    const pbRow = card.addStack();
+    pbRow.layoutHorizontally();
+    pbRow.centerAlignContent();
+    pbRow.spacing = 4;
+
+    const pbWidth = cardInnerW - 28;
+    const pbImg = drawProgressBar(acc.usedPercent, pbWidth, 3.5, isLow ? '#FF3B30' : null);
+    const pbWidget = pbRow.addImage(pbImg);
+    pbWidget.imageSize = new Size(pbWidth, 3.5);
     pbWidget.resizable = true;
 
-    const pctT = barRow.addText(`${acc.usedPercent}%`);
-    pctT.font = Font.systemFont(8);
-    pctT.textColor = new Color('#8E8E93');
+    pbRow.addSpacer();
 
-    widget.addSpacer(1);
-  }
+    const pctText = pbRow.addText(`${acc.usedPercent}%`);
+    pctText.font = Font.systemFont(8);
+    pctText.textColor = new Color('#8E8E93');
 
-  widget.addSpacer(3);
+    card.addSpacer(3);
 
-  // 3. 双账号每日用量图表 (左右并列)
-  const fullW = getWidgetChartWidth('medium');
-  const halfW = Math.floor((fullW - 8) / 2); // 中间留 8pt 间距
-  const chartH = getWidgetChartHeight('medium') - 6;
-
-  const chartsRow = widget.addStack();
-  chartsRow.layoutHorizontally();
-  chartsRow.spacing = 8;
-
-  for (let i = 0; i < 2; i++) {
-    const acc = accounts[i];
-    if (!acc) continue;
-
-    const col = chartsRow.addStack();
-    col.layoutVertically();
-
+    // 3. 专属每日用量热力图 (居中铺展在卡片内)
     if (acc.dailyStats && acc.dailyStats.days && acc.dailyStats.days.length > 0) {
-      const chartImg = drawDailyTrafficChart(acc.dailyStats, halfW, chartH, CONFIG.chart_type);
-      const chartWidgetImg = col.addImage(chartImg);
-      chartWidgetImg.imageSize = new Size(halfW, chartH);
+      const chartImg = drawDailyTrafficChart(acc.dailyStats, cardInnerW, chartH, CONFIG.chart_type);
+      const chartWidgetImg = card.addImage(chartImg);
+      chartWidgetImg.imageSize = new Size(cardInnerW, chartH);
       chartWidgetImg.resizable = true;
     } else {
-      const pbImg = drawProgressBar(acc.usedPercent || 0, halfW, 8);
-      const pbWidgetImg = col.addImage(pbImg);
-      pbWidgetImg.imageSize = new Size(halfW, 8);
+      const pbImg = drawProgressBar(acc.usedPercent || 0, cardInnerW, 8);
+      const pbWidgetImg = card.addImage(pbImg);
+      pbWidgetImg.imageSize = new Size(cardInnerW, 8);
       pbWidgetImg.resizable = true;
     }
   }
-
-  widget.addSpacer(3);
-
-  // 4. 底部：重置天数
-  const footerStack = widget.addStack();
-  footerStack.layoutHorizontally();
-  footerStack.centerAlignContent();
-  footerStack.addSpacer();
-
-  const resetText = footerStack.addText(`${summary.minResetDays}天后重置`);
-  resetText.font = Font.systemFont(9);
-  resetText.textColor = new Color('#8E8E93');
 }
 
 // 双账号 - 大号小组件 (Large 聚合总览 + 双账号详细对比 + 活跃账号热力图)
