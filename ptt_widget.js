@@ -1225,10 +1225,9 @@ function renderDualMediumWidget(widget, accounts, summary) {
     pill.setPadding(2, 6, 2, 6);
     pill.spacing = 3;
 
-    const nameT = pill.addText(acc.shortPlanName || `A${i + 1}`);
+    const nameT = pill.addText(`A${i + 1}`);
     nameT.font = Font.mediumSystemFont(9.5);
     nameT.textColor = new Color('#1C1C1E');
-    nameT.lineLimit = 1;
 
     const remT = pill.addText(`余${acc.remainingGB}G`);
     remT.font = Font.boldSystemFont(9.5);
