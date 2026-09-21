@@ -24,6 +24,7 @@
 		4983DC3D431997DCD2DAAD8D /* SwiftUIHeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5633DDB31FFB2B0C6F6B008B /* SwiftUIHeatmapView.swift */; };
 		5607CB21281A1A0FF06E320B /* PTTWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF32503B803CDE29B60EEF05 /* PTTWidgetBundle.swift */; };
 		56AAD531E9715E9BCB4A61B8 /* PTTWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0EF356D1528D55621C70C998 /* PTTWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A34BABD9B5CF99F9DD8AE9CD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5C530F6D1716BBE800A394A3 /* Assets.xcassets */; };
 		ADA9ED7CC18AC7C860B6699C /* SmallWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5982CCEFEA9818AAC254F3F9 /* SmallWidgetView.swift */; };
 		B66F4AF467E3F43A187231A8 /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694922DCE0D0A3D05280D949 /* SubscriptionService.swift */; };
 		BB04640A70EAE840F0006C62 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DC523D245AB5B5FA6D8CAC4 /* ContentView.swift */; };
@@ -63,6 +64,7 @@
 		54039F50418EE6B1B8F62EAB /* PTTApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PTTApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5633DDB31FFB2B0C6F6B008B /* SwiftUIHeatmapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftUIHeatmapView.swift; sourceTree = "<group>"; };
 		5982CCEFEA9818AAC254F3F9 /* SmallWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmallWidgetView.swift; sourceTree = "<group>"; };
+		5C530F6D1716BBE800A394A3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		620EA22E1AAA8031DDA9F03E /* LargeWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeWidgetView.swift; sourceTree = "<group>"; };
 		648110B52E3A945A029E6B84 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		694922DCE0D0A3D05280D949 /* SubscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionService.swift; sourceTree = "<group>"; };
@@ -158,6 +160,7 @@
 		CE89255F13B00A7DCA56FAB7 /* PTTApp */ = {
 			isa = PBXGroup;
 			children = (
+				5C530F6D1716BBE800A394A3 /* Assets.xcassets */,
 				F6D81C3A636B09AD5C0F3E05 /* Info.plist */,
 				AC7BFFB61BBA5744BE9FE8A7 /* PTTApp.swift */,
 				1295E1EE04BFB13423D36EF0 /* Views */,
@@ -209,6 +212,7 @@
 			buildConfigurationList = C4F601D065355E744A266A77 /* Build configuration list for PBXNativeTarget "PTTApp" */;
 			buildPhases = (
 				BB2EFA3095F213421A430D19 /* Sources */,
+				955CEFBE99253C88569B508F /* Resources */,
 				E65F81304F93BB836D2FB128 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -261,6 +265,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		955CEFBE99253C88569B508F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A34BABD9B5CF99F9DD8AE9CD /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A0DE67E1817E49549E097D04 /* Sources */ = {
